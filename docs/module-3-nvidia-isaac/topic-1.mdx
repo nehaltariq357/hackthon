@@ -1,0 +1,334 @@
+---
+sidebar_position: 2
+title: 'Isaac ROS Framework'
+---
+
+import DiagramPlaceholder from '@site/src/components/DiagramPlaceholder';
+import ProgressBar from '@site/src/components/ProgressBar';
+
+<ProgressBar />
+
+# Isaac ROS Framework
+
+Isaac ROS is NVIDIA's robotics platform that brings GPU acceleration and AI capabilities to ROS 2. It provides a collection of hardware-accelerated packages that enable robots to perceive, understand, and navigate the world around them.
+
+## Overview of Isaac ROS
+
+Isaac ROS extends the ROS 2 ecosystem with:
+
+- **Hardware-accelerated packages**: GPU-accelerated perception and navigation algorithms
+- **Isaac ROS GEMs**: Reusable, modular components for common robotics tasks
+- **Integration with NVIDIA hardware**: Optimized for Jetson and RTX platforms
+- **AI-powered capabilities**: Deep learning integration for perception and planning
+
+## Isaac ROS Installation and Setup
+
+```bash title="install_isaac_ros.sh"
+#!/bin/bash
+
+# Add NVIDIA package repositories
+curl -sSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+python3 get-pip.py
+sudo apt update
+
+# Install Isaac ROS packages
+sudo apt install -y ros-humble-isaac-ros-common
+sudo apt install -y ros-humble-isaac-ros-gems
+sudo apt install -y ros-humble-isaac-ros-perception
+sudo apt install -y ros-humble-isaac-ros-navigation
+```
+
+## Hardware-Accelerated Perception Example
+
+Here's an example of using Isaac ROS for stereo depth estimation:
+
+```python title="isaac_stereo_node.py"
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, CameraInfo
+from stereo_msgs.msg import DisparityImage
+from cv_bridge import CvBridge
+import numpy as np
+import cv2
+
+class IsaacStereoNode(Node):
+    def __init__(self):
+        super().__init__('isaac_stereo_node')
+
+        # Initialize CV Bridge
+        self.bridge = CvBridge()
+
+        # Publishers and subscribers
+        self.left_image_sub = self.create_subscription(
+            Image, 'left/image_rect', self.left_image_callback, 10)
+        self.right_image_sub = self.create_subscription(
+            Image, 'right/image_rect', self.right_image_callback, 10)
+
+        self.disparity_pub = self.create_publisher(
+            DisparityImage, 'disparity', 10)
+
+        # Stereo matching parameters
+        self.stereo = cv2.StereoSGBM_create(
+            minDisparity=0,
+            numDisparities=128,
+            blockSize=5,
+            P1=8 * 3 * 5**2,
+            P2=32 * 3 * 5**2,
+            disp12MaxDiff=1,
+            uniquenessRatio=15,
+            speckleWindowSize=0,
+            speckleRange=2,
+            mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
+        )
+
+        # Store images for stereo processing
+        self.left_image = None
+        self.right_image = None
+        self.latest_left = None
+        self.latest_right = None
+
+    def left_image_callback(self, msg):
+        """Callback for left camera image"""
+        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
+        self.latest_left = cv_image
+
+    def right_image_callback(self, msg):
+        """Callback for right camera image"""
+        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
+        self.latest_right = cv_image
+
+        # Process stereo pair if both images are available
+        if self.latest_left is not None and self.latest_right is not None:
+            self.process_stereo_pair()
+
+    def process_stereo_pair(self):
+        """Process stereo image pair to generate disparity map"""
+        if self.latest_left is not None and self.latest_right is not None:
+            # Compute disparity using SGBM
+            disparity = self.stereo.compute(
+                self.latest_left, self.latest_right
+            ).astype(np.float32) / 16.0
+
+            # Create disparity message
+            disp_msg = DisparityImage()
+            disp_msg.header = self.get_clock().now().to_msg()
+            disp_msg.image = self.bridge.cv2_to_imgmsg(disparity, encoding='32FC1')
+            disp_msg.f = 525.0  # Focal length (example value)
+            disp_msg.T = 0.1  # Baseline (example value)
+
+            self.disparity_pub.publish(disp_msg)
+            self.get_logger().info('Published disparity image')
+
+def main(args=None):
+    rclpy.init(args=args)
+    isaac_stereo_node = IsaacStereoNode()
+
+    try:
+        rclpy.spin(isaac_stereo_node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        isaac_stereo_node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Isaac ROS GEMs (GPU-accelerated Elements & Modules)
+
+Isaac ROS GEMs provide pre-built, GPU-accelerated components:
+
+```python title="isaac_ros_detection_pipeline.py"
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from vision_msgs.msg import Detection2DArray
+from cv_bridge import CvBridge
+import jetson.inference
+import jetson.utils
+
+class IsaacObjectDetectionNode(Node):
+    def __init__(self):
+        super().__init__('isaac_object_detection_node')
+
+        # Initialize CV Bridge
+        self.bridge = CvBridge()
+
+        # Publishers and subscribers
+        self.image_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.image_callback, 10)
+        self.detections_pub = self.create_publisher(
+            Detection2DArray, 'detections', 10)
+
+        # Load Isaac ROS detection model
+        # This would use NVIDIA's optimized inference engines
+        self.net = jetson.inference.detectNet("ssd-mobilenet-v2", threshold=0.5)
+
+    def image_callback(self, msg):
+        """Process image with Isaac ROS accelerated detection"""
+        # Convert ROS image to CUDA image
+        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        cuda_image = jetson.utils.cudaFromNumpy(cv_image)
+
+        # Perform object detection using Isaac ROS accelerated model
+        detections = self.net.Detect(cuda_image)
+
+        # Convert detections to ROS message
+        detections_msg = Detection2DArray()
+        detections_msg.header = msg.header
+
+        for detection in detections:
+            # Create detection message
+            detection_msg = Detection2D()
+            detection_msg.header = msg.header
+
+            # Bounding box
+            bbox = BoundingBox2D()
+            bbox.center.position.x = detection.Center[0]
+            bbox.center.position.y = detection.Center[1]
+            bbox.size_x = detection.Width
+            bbox.size_y = detection.Height
+
+            detection_msg.bbox = bbox
+
+            # Results
+            result = ObjectHypothesisWithPose()
+            result.hypothesis.class_id = self.net.GetClassDesc(detection.ClassID)
+            result.hypothesis.score = detection.Confidence
+
+            detection_msg.results.append(result)
+            detections_msg.detections.append(detection_msg)
+
+        self.detections_pub.publish(detections_msg)
+        self.get_logger().info(f'Published {len(detections)} detections')
+
+def main(args=None):
+    rclpy.init(args=args)
+    detection_node = IsaacObjectDetectionNode()
+
+    try:
+        rclpy.spin(detection_node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        detection_node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Isaac ROS Navigation
+
+Isaac ROS provides GPU-accelerated navigation capabilities:
+
+```python title="isaac_navigation_node.py"
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped, Twist
+from nav_msgs.msg import OccupancyGrid, Odometry
+from sensor_msgs.msg import LaserScan, PointCloud2
+import numpy as np
+
+class IsaacNavigationNode(Node):
+    def __init__(self):
+        super().__init__('isaac_navigation_node')
+
+        # Publishers and subscribers
+        self.goal_sub = self.create_subscription(
+            PoseStamped, 'goal_pose', self.goal_callback, 10)
+        self.odom_sub = self.create_subscription(
+            Odometry, 'odom', self.odom_callback, 10)
+        self.scan_sub = self.create_subscription(
+            LaserScan, 'scan', self.scan_callback, 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+
+        # Navigation state
+        self.current_pose = None
+        self.goal_pose = None
+        self.map = None
+
+        # Timer for navigation loop
+        self.nav_timer = self.create_timer(0.1, self.navigation_loop)
+
+    def goal_callback(self, msg):
+        """Handle navigation goal"""
+        self.goal_pose = msg.pose
+        self.get_logger().info(f'New goal received: {msg.pose.position}')
+
+    def odom_callback(self, msg):
+        """Update current pose"""
+        self.current_pose = msg.pose.pose
+
+    def scan_callback(self, msg):
+        """Process laser scan for obstacle detection"""
+        # Use Isaac ROS accelerated obstacle detection
+        ranges = np.array(msg.ranges)
+        # Filter out invalid ranges
+        valid_ranges = ranges[np.isfinite(ranges)]
+
+        # Check for obstacles in front
+        front_ranges = valid_ranges[len(valid_ranges)//2-30:len(valid_ranges)//2+30]
+        if len(front_ranges) > 0 and np.min(front_ranges) < 0.5:
+            self.get_logger().warn('Obstacle detected in front!')
+
+    def navigation_loop(self):
+        """Main navigation loop with Isaac ROS acceleration"""
+        if self.current_pose and self.goal_pose:
+            # Calculate desired velocity using Isaac ROS accelerated planners
+            cmd_vel = self.calculate_velocity_to_goal()
+            self.cmd_vel_pub.publish(cmd_vel)
+
+    def calculate_velocity_to_goal(self):
+        """Calculate velocity to reach goal (simplified)"""
+        cmd_vel = Twist()
+
+        # Simple proportional controller
+        if self.current_pose and self.goal_pose:
+            dx = self.goal_pose.position.x - self.current_pose.position.x
+            dy = self.goal_pose.position.y - self.current_pose.position.y
+
+            distance = np.sqrt(dx**2 + dy**2)
+
+            if distance > 0.1:  # If not at goal
+                cmd_vel.linear.x = min(0.5, distance * 0.5)  # Move toward goal
+                cmd_vel.angular.z = np.arctan2(dy, dx) - self.current_pose.orientation.z  # Turn toward goal
+            else:
+                cmd_vel.linear.x = 0.0
+                cmd_vel.angular.z = 0.0
+
+        return cmd_vel
+
+def main(args=None):
+    rclpy.init(args=args)
+    nav_node = IsaacNavigationNode()
+
+    try:
+        rclpy.spin(nav_node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        nav_node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Best Practices with Isaac ROS
+
+- **Hardware Requirements**: Ensure NVIDIA GPU hardware compatibility
+- **Performance Optimization**: Use appropriate data types and buffer sizes
+- **Model Deployment**: Optimize deep learning models for target hardware
+- **Integration**: Follow ROS 2 conventions while leveraging Isaac capabilities
+- **Testing**: Validate performance improvements on target hardware
+
+## Summary
+
+Isaac ROS brings GPU acceleration and AI capabilities to the ROS 2 ecosystem, enabling robots to perform complex perception and navigation tasks with improved performance. By leveraging Isaac ROS GEMs, developers can accelerate their robotics applications.
+
+<DiagramPlaceholder
+  title="Isaac ROS Architecture"
+  description="Shows the components and GPU acceleration in Isaac ROS framework"
+/>

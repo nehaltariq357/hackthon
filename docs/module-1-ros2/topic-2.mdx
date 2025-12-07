@@ -1,0 +1,180 @@
+---
+sidebar_position: 3
+title: 'ROS 2 Nodes and Topics'
+---
+
+import DiagramPlaceholder from '@site/src/components/DiagramPlaceholder';
+import ProgressBar from '@site/src/components/ProgressBar';
+
+<ProgressBar />
+
+# ROS 2 Nodes and Topics
+
+In ROS 2, nodes are the fundamental building blocks of a robotic application. Nodes communicate with each other using topics, which implement a publish-subscribe communication pattern. Understanding nodes and topics is essential for building distributed robotic systems.
+
+## Understanding Nodes
+
+A node is a process that performs computation. In ROS 2, nodes are designed to be modular and focused on a single task. Here's a more complex example of a ROS 2 node:
+
+```python title="sensor_fusion_node.py"
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan, Imu
+from geometry_msgs.msg import Twist
+
+class SensorFusionNode(Node):
+    def __init__(self):
+        super().__init__('sensor_fusion_node')
+
+        # Create subscribers for different sensor topics
+        self.laser_subscription = self.create_subscription(
+            LaserScan,
+            'scan',
+            self.laser_callback,
+            10)
+        self.laser_subscription  # prevent unused variable warning
+
+        self.imu_subscription = self.create_subscription(
+            Imu,
+            'imu/data',
+            self.imu_callback,
+            10)
+        self.imu_subscription  # prevent unused variable warning
+
+        # Create publisher for movement commands
+        self.cmd_vel_publisher = self.create_publisher(Twist, 'cmd_vel', 10)
+
+        # Timer for processing data
+        self.timer = self.create_timer(0.1, self.process_data)
+
+        # Data storage
+        self.laser_data = None
+        self.imu_data = None
+
+    def laser_callback(self, msg):
+        self.laser_data = msg
+        self.get_logger().info(f'Laser data received: {len(msg.ranges)} ranges')
+
+    def imu_callback(self, msg):
+        self.imu_data = msg
+        self.get_logger().info('IMU data received')
+
+    def process_data(self):
+        if self.laser_data is not None and self.imu_data is not None:
+            # Simple obstacle avoidance based on laser data
+            cmd_msg = Twist()
+
+            # Check for obstacles in front
+            front_ranges = self.laser_data.ranges[330:30] + self.laser_data.ranges[330:]
+            min_distance = min([r for r in front_ranges if r > 0.0], default=float('inf'))
+
+            if min_distance < 1.0:  # Obstacle within 1 meter
+                cmd_msg.linear.x = 0.0
+                cmd_msg.angular.z = 0.5  # Turn right
+            else:
+                cmd_msg.linear.x = 0.5  # Move forward
+                cmd_msg.angular.z = 0.0
+
+            self.cmd_vel_publisher.publish(cmd_msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    sensor_fusion_node = SensorFusionNode()
+
+    try:
+        rclpy.spin(sensor_fusion_node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sensor_fusion_node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Topic Communication
+
+Topics implement a publish-subscribe communication pattern where publishers send messages to a topic and subscribers receive messages from the topic. This enables loose coupling between nodes.
+
+### Quality of Service (QoS) Settings
+
+ROS 2 provides Quality of Service settings to configure communication behavior:
+
+```python title="qos_examples.py"
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+
+# Reliable communication (messages guaranteed to be delivered)
+reliable_qos = QoSProfile(
+    depth=10,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.VOLATILE
+)
+
+# Best effort communication (faster but no delivery guarantee)
+best_effort_qos = QoSProfile(
+    depth=10,
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE
+)
+
+# Example usage in a node
+class QoSDemoNode(Node):
+    def __init__(self):
+        super().__init__('qos_demo_node')
+
+        # Publisher with reliable QoS
+        self.reliable_publisher = self.create_publisher(
+            String, 'reliable_topic', reliable_qos)
+
+        # Publisher with best effort QoS
+        self.best_effort_publisher = self.create_publisher(
+            String, 'best_effort_topic', best_effort_qos)
+```
+
+## Launch Files
+
+Launch files allow you to start multiple nodes with a single command:
+
+```python title="robot_launch.py"
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package='my_robot_package',
+            executable='sensor_fusion_node',
+            name='sensor_fusion',
+            parameters=[
+                {'param1': 'value1'},
+                {'param2': 'value2'}
+            ],
+            remappings=[
+                ('/original_topic', '/new_topic')
+            ]
+        ),
+        Node(
+            package='my_robot_package',
+            executable='navigation_node',
+            name='navigator'
+        )
+    ])
+```
+
+## Best Practices
+
+- **Node design**: Keep nodes focused on a single responsibility
+- **Topic naming**: Use descriptive, consistent naming conventions
+- **Message types**: Use appropriate message types from standard ROS packages when possible
+- **Resource management**: Properly clean up resources in node destruction
+- **Error handling**: Implement robust error handling in node callbacks
+
+## Summary
+
+Nodes and topics form the foundation of ROS 2's distributed architecture. Understanding how to design nodes with appropriate topics and QoS settings is crucial for building robust robotic applications.
+
+<DiagramPlaceholder
+  title="ROS 2 Node Communication"
+  description="Shows multiple nodes communicating via topics with different QoS settings"
+/>

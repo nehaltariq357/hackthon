@@ -1,0 +1,840 @@
+---
+sidebar_position: 2
+title: 'Humanoid Robot Integration'
+---
+
+import DiagramPlaceholder from '@site/src/components/DiagramPlaceholder';
+import ProgressBar from '@site/src/components/ProgressBar';
+
+<ProgressBar />
+
+# Humanoid Robot Integration
+
+The capstone project integrates all concepts from previous modules into a complete autonomous humanoid robot system. This module focuses on the integration aspects of combining vision, language understanding, and action execution in a humanoid form factor.
+
+## Overview of Humanoid Robot Architecture
+
+A humanoid robot system integrates multiple complex subsystems:
+
+- **Locomotion**: Walking, balancing, and movement control
+- **Manipulation**: Arm and hand control for object interaction
+- **Perception**: Vision, audio, and sensor fusion
+- **Cognition**: Planning, reasoning, and decision making
+- **Communication**: Natural language and social interaction
+
+## Humanoid Control Architecture
+
+```python title="humanoid_robot_controller.py"
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String, Float32
+from sensor_msgs.msg import JointState, Image, Imu, LaserScan
+from geometry_msgs.msg import Twist, Pose, PointStamped
+from builtin_interfaces.msg import Duration
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from control_msgs.msg import JointTrajectoryControllerState
+from cv_bridge import CvBridge
+import numpy as np
+import math
+from typing import Dict, List, Optional, Tuple
+
+class HumanoidRobotController(Node):
+    def __init__(self):
+        super().__init__('humanoid_robot_controller')
+
+        # Initialize CV Bridge
+        self.bridge = CvBridge()
+
+        # Publishers for different subsystems
+        self.joint_trajectory_pub = self.create_publisher(
+            JointTrajectory, 'joint_trajectory_controller/joint_trajectory', 10)
+        self.cmd_vel_pub = self.create_publisher(
+            Twist, 'cmd_vel', 10)
+        self.speech_pub = self.create_publisher(
+            String, 'tts_input', 10)
+
+        # Subscribers for sensor data
+        self.joint_state_sub = self.create_subscription(
+            JointState, 'joint_states', self.joint_state_callback, 10)
+        self.imu_sub = self.create_subscription(
+            Imu, 'imu/data', self.imu_callback, 10)
+        self.camera_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.camera_callback, 10)
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+
+        # Humanoid-specific parameters
+        self.joint_names = [
+            'left_hip_joint', 'left_knee_joint', 'left_ankle_joint',
+            'right_hip_joint', 'right_knee_joint', 'right_ankle_joint',
+            'left_shoulder_joint', 'left_elbow_joint', 'left_wrist_joint',
+            'right_shoulder_joint', 'right_elbow_joint', 'right_wrist_joint',
+            'head_pan_joint', 'head_tilt_joint'
+        ]
+
+        # Robot state
+        self.current_joint_positions = {}
+        self.imu_data = None
+        self.camera_image = None
+        self.laser_data = None
+        self.robot_pose = Pose()
+
+        # Walking controller parameters
+        self.walk_params = {
+            'step_height': 0.05,
+            'step_length': 0.3,
+            'step_duration': 1.0,
+            'balance_threshold': 0.1
+        }
+
+        # Timer for humanoid control loop
+        self.control_timer = self.create_timer(0.05, self.control_loop)
+
+    def joint_state_callback(self, msg):
+        """Update joint positions"""
+        for i, name in enumerate(msg.name):
+            if name in self.joint_names:
+                self.current_joint_positions[name] = msg.position[i]
+
+    def imu_callback(self, msg):
+        """Update IMU data for balance control"""
+        self.imu_data = {
+            'orientation': (msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w),
+            'angular_velocity': (msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z),
+            'linear_acceleration': (msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z)
+        }
+
+    def camera_callback(self, msg):
+        """Update camera image"""
+        try:
+            self.camera_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        except Exception as e:
+            self.get_logger().warn(f'Error processing camera image: {e}')
+
+    def laser_callback(self, msg):
+        """Update laser scan data"""
+        self.laser_data = msg.ranges
+
+    def control_loop(self):
+        """Main humanoid control loop"""
+        # Check balance using IMU data
+        if self.imu_data:
+            self.check_balance()
+
+        # Process any pending high-level commands
+        self.process_high_level_commands()
+
+    def check_balance(self):
+        """Check robot balance using IMU data"""
+        if self.imu_data:
+            # Extract orientation from quaternion
+            quat = self.imu_data['orientation']
+            roll, pitch, yaw = self.quaternion_to_euler(quat)
+
+            # Check if robot is within balance thresholds
+            if abs(roll) > self.walk_params['balance_threshold'] or abs(pitch) > self.walk_params['balance_threshold']:
+                self.get_logger().warn(f'Balance threshold exceeded: roll={roll:.3f}, pitch={pitch:.3f}')
+                # Trigger balance recovery
+                self.recover_balance()
+
+    def quaternion_to_euler(self, quat: Tuple[float, float, float, float]) -> Tuple[float, float, float]:
+        """Convert quaternion to Euler angles"""
+        x, y, z, w = quat
+
+        # Roll (x-axis rotation)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        # Pitch (y-axis rotation)
+        sinp = 2 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            pitch = math.copysign(math.pi / 2, sinp)  # Use 90 degrees if out of range
+        else:
+            pitch = math.asin(sinp)
+
+        # Yaw (z-axis rotation)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        return roll, pitch, yaw
+
+    def recover_balance(self):
+        """Recover robot balance"""
+        # Publish zero joint commands to stop movement
+        zero_trajectory = self.create_joint_trajectory({joint: 0.0 for joint in self.joint_names})
+        self.joint_trajectory_pub.publish(zero_trajectory)
+
+        # Stop any base movement
+        stop_cmd = Twist()
+        self.cmd_vel_pub.publish(stop_cmd)
+
+        self.get_logger().info('Balance recovery initiated')
+
+    def walk_forward(self, distance: float):
+        """Execute walking motion for specified distance"""
+        # Calculate number of steps needed
+        num_steps = int(distance / self.walk_params['step_length'])
+
+        for step in range(num_steps):
+            # Execute one walking step
+            self.execute_walking_step()
+
+    def execute_walking_step(self):
+        """Execute a single walking step"""
+        # This is a simplified walking pattern
+        # Real humanoid walking requires complex gait planning
+
+        # Example: Simple alternating leg movement
+        step_trajectory = JointTrajectory()
+        step_trajectory.joint_names = self.joint_names
+
+        # Create trajectory points for the step
+        point = JointTrajectoryPoint()
+
+        # Set positions for a step (simplified)
+        positions = []
+        for joint_name in self.joint_names:
+            if 'hip' in joint_name:
+                positions.append(0.1 if 'left' in joint_name else -0.1)  # Lift leg
+            elif 'knee' in joint_name:
+                positions.append(0.2 if 'left' in joint_name else -0.2)  # Bend knee
+            elif 'ankle' in joint_name:
+                positions.append(0.05 if 'left' in joint_name else -0.05)  # Adjust ankle
+            else:
+                positions.append(0.0)  # Keep other joints neutral
+
+        point.positions = positions
+        point.time_from_start = Duration(sec=int(self.walk_params['step_duration']))
+        step_trajectory.points = [point]
+
+        self.joint_trajectory_pub.publish(step_trajectory)
+
+    def wave_hand(self):
+        """Execute waving gesture"""
+        wave_trajectory = JointTrajectory()
+        wave_trajectory.joint_names = ['right_shoulder_joint', 'right_elbow_joint', 'right_wrist_joint']
+
+        points = []
+
+        # Point 1: Initial position
+        p1 = JointTrajectoryPoint()
+        p1.positions = [0.0, 0.0, 0.0]
+        p1.time_from_start = Duration(sec=0, nanosec=500000000)
+        points.append(p1)
+
+        # Point 2: Raise arm
+        p2 = JointTrajectoryPoint()
+        p2.positions = [0.5, 0.5, 0.0]
+        p2.time_from_start = Duration(sec=1)
+        points.append(p2)
+
+        # Point 3: Wave motion
+        p3 = JointTrajectoryPoint()
+        p3.positions = [0.5, 0.5, 0.5]
+        p3.time_from_start = Duration(sec=1, nanosec=500000000)
+        points.append(p3)
+
+        # Point 4: Return to position
+        p4 = JointTrajectoryPoint()
+        p4.positions = [0.5, 0.5, -0.5]
+        p4.time_from_start = Duration(sec=2)
+        points.append(p4)
+
+        # Point 5: Lower arm
+        p5 = JointTrajectoryPoint()
+        p5.positions = [0.0, 0.0, 0.0]
+        p5.time_from_start = Duration(sec=2, nanosec=500000000)
+        points.append(p5)
+
+        wave_trajectory.points = points
+        self.joint_trajectory_pub.publish(wave_trajectory)
+
+    def speak(self, text: str):
+        """Make robot speak text"""
+        speech_msg = String()
+        speech_msg.data = text
+        self.speech_pub.publish(speech_msg)
+
+    def create_joint_trajectory(self, joint_positions: Dict[str, float]) -> JointTrajectory:
+        """Create a joint trajectory message"""
+        trajectory = JointTrajectory()
+        trajectory.joint_names = list(joint_positions.keys())
+
+        point = JointTrajectoryPoint()
+        point.positions = list(joint_positions.values())
+        point.time_from_start = Duration(sec=1)  # 1 second to reach position
+
+        trajectory.points = [point]
+        return trajectory
+
+    def process_high_level_commands(self):
+        """Process high-level commands from VLA system"""
+        # This would interface with the VLA system to execute commands
+        # For demo, we'll just implement some basic commands
+        pass
+
+def main(args=None):
+    rclpy.init(args=args)
+    humanoid_controller = HumanoidRobotController()
+
+    try:
+        rclpy.spin(humanoid_controller)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        humanoid_controller.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Humanoid Perception System
+
+```python title="humanoid_perception_system.py"
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, PointCloud2, LaserScan, Imu
+from vision_msgs.msg import Detection2DArray, ObjectHypothesisWithPose
+from geometry_msgs.msg import Point, Vector3
+from std_msgs.msg import Header
+from cv_bridge import CvBridge
+import cv2
+import numpy as np
+import open3d as o3d
+from typing import List, Dict, Any, Optional
+
+class HumanoidPerceptionSystem(Node):
+    def __init__(self):
+        super().__init__('humanoid_perception_system')
+
+        # Initialize CV Bridge
+        self.bridge = CvBridge()
+
+        # Publishers
+        self.detection_pub = self.create_publisher(
+            Detection2DArray, 'perception/detections', 10)
+        self.spatial_detection_pub = self.create_publisher(
+            Detection2DArray, 'perception/spatial_detections', 10)
+
+        # Subscribers
+        self.rgb_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.rgb_callback, 10)
+        self.depth_sub = self.create_subscription(
+            Image, 'camera/depth/image_raw', self.depth_callback, 10)
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+        self.imu_sub = self.create_subscription(
+            Imu, 'imu/data', self.imu_callback, 10)
+
+        # Internal state
+        self.rgb_image = None
+        self.depth_image = None
+        self.laser_data = None
+        self.imu_data = None
+
+        # Object detection model (using OpenCV DNN as example)
+        self.detection_model = cv2.dnn.readNetFromDarknet(
+            '/path/to/yolo.cfg', '/path/to/yolo.weights'
+        )
+        self.detection_classes = self.load_coco_classes()
+
+    def load_coco_classes(self) -> List[str]:
+        """Load COCO dataset class names"""
+        # In practice, load from file
+        return [
+            'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train',
+            'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign',
+            'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep',
+            'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella',
+            'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard',
+            'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard',
+            'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork',
+            'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
+            'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+            'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv',
+            'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
+            'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+            'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+        ]
+
+    def rgb_callback(self, msg):
+        """Process RGB image"""
+        try:
+            self.rgb_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+
+            # Run object detection
+            detections = self.run_object_detection(self.rgb_image)
+
+            # Publish detections
+            self.publish_detections(detections, msg.header)
+
+            # If we have depth data, create spatial detections
+            if self.depth_image is not None:
+                spatial_detections = self.create_spatial_detections(detections, self.depth_image)
+                self.publish_spatial_detections(spatial_detections, msg.header)
+
+        except Exception as e:
+            self.get_logger().error(f'Error processing RGB image: {e}')
+
+    def depth_callback(self, msg):
+        """Process depth image"""
+        try:
+            self.depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='32FC1')
+        except Exception as e:
+            self.get_logger().error(f'Error processing depth image: {e}')
+
+    def laser_callback(self, msg):
+        """Process laser scan data"""
+        self.laser_data = msg.ranges
+
+    def imu_callback(self, msg):
+        """Process IMU data"""
+        self.imu_data = msg
+
+    def run_object_detection(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        """Run object detection on image"""
+        height, width = image.shape[:2]
+
+        # Create blob from image
+        blob = cv2.dnn.blobFromImage(
+            image, 1/255.0, (416, 416), swapRB=True, crop=False
+        )
+
+        # Set input to the model
+        self.detection_model.setInput(blob)
+
+        # Run forward pass
+        layer_names = self.detection_model.getLayerNames()
+        output_names = [layer_names[i[0] - 1] for i in self.detection_model.getUnconnectedOutLayers()]
+        outputs = self.detection_model.forward(output_names)
+
+        # Process outputs
+        boxes = []
+        confidences = []
+        class_ids = []
+
+        for output in outputs:
+            for detection in output:
+                scores = detection[5:]
+                class_id = np.argmax(scores)
+                confidence = scores[class_id]
+
+                if confidence > 0.5:  # Threshold
+                    center_x = int(detection[0] * width)
+                    center_y = int(detection[1] * height)
+                    w = int(detection[2] * width)
+                    h = int(detection[3] * height)
+
+                    x = int(center_x - w / 2)
+                    y = int(center_y - h / 2)
+
+                    boxes.append([x, y, w, h])
+                    confidences.append(float(confidence))
+                    class_ids.append(class_id)
+
+        # Apply non-maximum suppression
+        indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+
+        detections = []
+        if len(indices) > 0:
+            for i in indices.flatten():
+                x, y, w, h = boxes[i]
+                class_id = class_ids[i]
+                confidence = confidences[i]
+
+                detection = {
+                    'bbox': [x, y, w, h],
+                    'class_id': class_id,
+                    'class_name': self.detection_classes[class_id] if class_id < len(self.detection_classes) else 'unknown',
+                    'confidence': confidence
+                }
+                detections.append(detection)
+
+        return detections
+
+    def create_spatial_detections(self, detections: List[Dict[str, Any]], depth_image: np.ndarray) -> List[Dict[str, Any]]:
+        """Add spatial information to detections using depth image"""
+        spatial_detections = []
+
+        for detection in detections:
+            x, y, w, h = detection['bbox']
+
+            # Calculate center of bounding box
+            center_x = x + w // 2
+            center_y = y + h // 2
+
+            # Get depth at center of bounding box (average over a small region)
+            depth_region = depth_image[center_y-10:center_y+10, center_x-10:center_x+10]
+            depth_value = np.nanmean(depth_region[depth_region > 0])  # Ignore invalid depth values
+
+            spatial_detection = detection.copy()
+            spatial_detection['distance'] = float(depth_value) if not np.isnan(depth_value) else 0.0
+
+            # Calculate approximate 3D position (simplified)
+            # In practice, use camera intrinsic parameters for accurate calculation
+            spatial_detection['position_3d'] = {
+                'x': float(depth_value),  # Simplified - in practice, use proper camera model
+                'y': float((center_x - depth_image.shape[1]/2) * depth_value / 500),  # Approximate
+                'z': float((center_y - depth_image.shape[0]/2) * depth_value / 500)   # Approximate
+            }
+
+            spatial_detections.append(spatial_detection)
+
+        return spatial_detections
+
+    def publish_detections(self, detections: List[Dict[str, Any]], header):
+        """Publish detections as ROS message"""
+        detections_msg = Detection2DArray()
+        detections_msg.header = header
+
+        for detection in detections:
+            detection_msg = Detection2D()
+            detection_msg.header = header
+
+            # Bounding box
+            bbox = BoundingBox2D()
+            bbox.center.position.x = detection['bbox'][0] + detection['bbox'][2] / 2
+            bbox.center.position.y = detection['bbox'][1] + detection['bbox'][3] / 2
+            bbox.size_x = detection['bbox'][2]
+            bbox.size_y = detection['bbox'][3]
+            detection_msg.bbox = bbox
+
+            # Results
+            result = ObjectHypothesisWithPose()
+            result.hypothesis.class_id = detection['class_name']
+            result.hypothesis.score = detection['confidence']
+            detection_msg.results.append(result)
+
+            detections_msg.detections.append(detection_msg)
+
+        self.detection_pub.publish(detections_msg)
+
+    def publish_spatial_detections(self, spatial_detections: List[Dict[str, Any]], header):
+        """Publish spatial detections as ROS message"""
+        detections_msg = Detection2DArray()
+        detections_msg.header = header
+
+        for detection in spatial_detections:
+            detection_msg = Detection2D()
+            detection_msg.header = header
+
+            # Bounding box
+            bbox = BoundingBox2D()
+            bbox.center.position.x = detection['bbox'][0] + detection['bbox'][2] / 2
+            bbox.center.position.y = detection['bbox'][1] + detection['bbox'][3] / 2
+            bbox.size_x = detection['bbox'][2]
+            bbox.size_y = detection['bbox'][3]
+            detection_msg.bbox = bbox
+
+            # Add distance as a key-value pair in the result
+            result = ObjectHypothesisWithPose()
+            result.hypothesis.class_id = detection['class_name']
+            result.hypothesis.score = detection['confidence']
+            detection_msg.results.append(result)
+
+            # Store 3D position in the detection message (custom extension)
+            # In practice, you might use a custom message type for spatial information
+
+            detections_msg.detections.append(detection_msg)
+
+        self.spatial_detection_pub.publish(detections_msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    perception_system = HumanoidPerceptionSystem()
+
+    try:
+        rclpy.spin(perception_system)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        perception_system.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Integration Framework
+
+```python title="humanoid_integration_framework.py"
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from sensor_msgs.msg import JointState, Image, Imu
+from geometry_msgs.msg import Twist, Pose
+from action_msgs.msg import GoalStatus
+from rclpy.action import ActionClient
+from threading import Lock
+import json
+from typing import Dict, Any, Optional
+
+class HumanoidIntegrationFramework(Node):
+    def __init__(self):
+        super().__init__('humanoid_integration_framework')
+
+        # Publishers and subscribers
+        self.task_command_sub = self.create_subscription(
+            String, 'capstone_task_command', self.task_command_callback, 10)
+        self.status_pub = self.create_publisher(
+            String, 'integration_status', 10)
+
+        # Component interfaces
+        self.humanoid_controller = None
+        self.perception_system = None
+        self.vla_system = None
+
+        # Internal state
+        self.current_task = None
+        self.task_status = "idle"
+        self.system_status = {
+            'locomotion': 'ready',
+            'manipulation': 'ready',
+            'perception': 'ready',
+            'cognition': 'ready'
+        }
+
+        # Thread safety
+        self.state_lock = Lock()
+
+        # Timer for integration monitoring
+        self.monitor_timer = self.create_timer(1.0, self.monitor_system)
+
+    def task_command_callback(self, msg):
+        """Handle high-level capstone tasks"""
+        try:
+            task_data = json.loads(msg.data)
+            task_type = task_data.get('type', 'unknown')
+            task_params = task_data.get('parameters', {})
+
+            self.get_logger().info(f'Received capstone task: {task_type}')
+
+            # Execute the task
+            self.execute_capstone_task(task_type, task_params)
+
+        except json.JSONDecodeError:
+            self.get_logger().error(f'Invalid JSON in task command: {msg.data}')
+        except Exception as e:
+            self.get_logger().error(f'Error processing task command: {e}')
+
+    def execute_capstone_task(self, task_type: str, params: Dict[str, Any]):
+        """Execute a capstone task"""
+        with self.state_lock:
+            self.current_task = task_type
+            self.task_status = "executing"
+
+        # Update status
+        status_msg = String()
+        status_msg.data = f'EXECUTING: {task_type}'
+        self.status_pub.publish(status_msg)
+
+        # Execute based on task type
+        if task_type == 'greet_and_guide':
+            self.execute_greet_and_guide_task(params)
+        elif task_type == 'fetch_and_carry':
+            self.execute_fetch_and_carry_task(params)
+        elif task_type == 'navigate_and_interact':
+            self.execute_navigate_and_interact_task(params)
+        else:
+            self.get_logger().warn(f'Unknown capstone task: {task_type}')
+            self.complete_task(False, f'Unknown task type: {task_type}')
+
+    def execute_greet_and_guide_task(self, params: Dict[str, Any]):
+        """Execute greeting and guiding task"""
+        self.get_logger().info('Executing greet and guide task')
+
+        try:
+            # 1. Detect person
+            person_detected = self.detect_person()
+            if not person_detected:
+                self.complete_task(False, 'No person detected')
+                return
+
+            # 2. Greet person
+            self.greet_person()
+
+            # 3. Listen for destination
+            destination = self.listen_for_destination()
+            if not destination:
+                self.complete_task(False, 'No destination provided')
+                return
+
+            # 4. Navigate to destination while providing guidance
+            success = self.navigate_with_guidance(destination)
+            self.complete_task(success, f'Navigation {"succeeded" if success else "failed"}')
+
+        except Exception as e:
+            self.get_logger().error(f'Error in greet and guide task: {e}')
+            self.complete_task(False, f'Task failed: {e}')
+
+    def execute_fetch_and_carry_task(self, params: Dict[str, Any]):
+        """Execute fetch and carry task"""
+        self.get_logger().info('Executing fetch and carry task')
+
+        try:
+            # 1. Navigate to source location
+            source_location = params.get('source', 'kitchen')
+            success = self.navigate_to_location(source_location)
+            if not success:
+                self.complete_task(False, f'Failed to navigate to {source_location}')
+                return
+
+            # 2. Detect and pick up object
+            object_to_fetch = params.get('object', 'cup')
+            success = self.detect_and_pick_up_object(object_to_fetch)
+            if not success:
+                self.complete_task(False, f'Failed to pick up {object_to_fetch}')
+                return
+
+            # 3. Navigate to destination
+            destination = params.get('destination', 'living_room')
+            success = self.navigate_to_location(destination)
+            if not success:
+                self.complete_task(False, f'Failed to navigate to {destination}')
+                return
+
+            # 4. Place object down
+            success = self.place_object_down()
+            self.complete_task(success, f'Fetch task {"succeeded" if success else "failed"}')
+
+        except Exception as e:
+            self.get_logger().error(f'Error in fetch and carry task: {e}')
+            self.complete_task(False, f'Task failed: {e}')
+
+    def execute_navigate_and_interact_task(self, params: Dict[str, Any]):
+        """Execute navigation and interaction task"""
+        self.get_logger().info('Executing navigate and interact task')
+
+        try:
+            # 1. Navigate to location
+            location = params.get('location', 'kitchen')
+            success = self.navigate_to_location(location)
+            if not success:
+                self.complete_task(False, f'Failed to navigate to {location}')
+                return
+
+            # 2. Detect objects in the area
+            objects = self.detect_objects_in_area()
+
+            # 3. Interact based on detected objects
+            interaction_success = self.interact_with_objects(objects)
+            self.complete_task(interaction_success, f'Interaction task {"succeeded" if interaction_success else "failed"}')
+
+        except Exception as e:
+            self.get_logger().error(f'Error in navigate and interact task: {e}')
+            self.complete_task(False, f'Task failed: {e}')
+
+    def detect_person(self) -> bool:
+        """Detect if a person is present"""
+        # This would interface with perception system
+        # For demo, return True
+        self.get_logger().info('Person detected')
+        return True
+
+    def greet_person(self):
+        """Greet the detected person"""
+        # Interface with speech system
+        self.get_logger().info('Greeting person')
+        # self.speak("Hello! How can I help you today?")
+
+    def listen_for_destination(self) -> Optional[str]:
+        """Listen for destination from person"""
+        # This would interface with speech recognition
+        # For demo, return a fixed destination
+        self.get_logger().info('Listening for destination')
+        return "kitchen"
+
+    def navigate_with_guidance(self, destination: str) -> bool:
+        """Navigate to destination while providing guidance"""
+        self.get_logger().info(f'Navigating to {destination} with guidance')
+        # This would implement navigation with periodic status updates
+        return True
+
+    def navigate_to_location(self, location: str) -> bool:
+        """Navigate to specified location"""
+        self.get_logger().info(f'Navigating to {location}')
+        # This would interface with navigation system
+        return True
+
+    def detect_and_pick_up_object(self, object_name: str) -> bool:
+        """Detect and pick up specified object"""
+        self.get_logger().info(f'Detecting and picking up {object_name}')
+        # This would interface with perception and manipulation systems
+        return True
+
+    def place_object_down(self) -> bool:
+        """Place currently held object down"""
+        self.get_logger().info('Placing object down')
+        # This would interface with manipulation system
+        return True
+
+    def detect_objects_in_area(self) -> list:
+        """Detect objects in current area"""
+        self.get_logger().info('Detecting objects in area')
+        # This would interface with perception system
+        return ['table', 'chair', 'cup']
+
+    def interact_with_objects(self, objects: list) -> bool:
+        """Interact with detected objects"""
+        self.get_logger().info(f'Interacting with objects: {objects}')
+        # This would implement appropriate interactions
+        return True
+
+    def complete_task(self, success: bool, message: str):
+        """Complete the current task"""
+        with self.state_lock:
+            self.task_status = "completed"
+            self.current_task = None
+
+        status_msg = String()
+        status_msg.data = f'{"SUCCESS" if success else "FAILURE"}: {message}'
+        self.status_pub.publish(status_msg)
+
+        self.get_logger().info(f'Task completed with status: {"SUCCESS" if success else "FAILURE"} - {message}')
+
+    def monitor_system(self):
+        """Monitor the overall system status"""
+        # Check if all components are operational
+        operational_status = "OPERATIONAL" if all(
+            status == 'ready' for status in self.system_status.values()
+        ) else "DEGRADED"
+
+        status_msg = String()
+        status_msg.data = f'System: {operational_status}, Task: {self.task_status}'
+        self.status_pub.publish(status_msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    integration_framework = HumanoidIntegrationFramework()
+
+    try:
+        rclpy.spin(integration_framework)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        integration_framework.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Best Practices for Humanoid Integration
+
+- **Modularity**: Keep subsystems as independent modules that can be tested separately
+- **Safety**: Implement multiple safety layers and emergency stops
+- **Calibration**: Regularly calibrate sensors and actuators
+- **Testing**: Extensive testing in simulation before real-world deployment
+- **Monitoring**: Continuous monitoring of all subsystems
+
+## Summary
+
+Humanoid robot integration combines all the concepts learned in previous modules into a complete autonomous system. The integration requires careful coordination between locomotion, manipulation, perception, and cognition subsystems. Success depends on modular design, robust safety mechanisms, and thorough testing.
+
+<DiagramPlaceholder
+  title="Humanoid Robot Integration"
+  description="Shows the integration of all subsystems in a humanoid robot platform"
+/>

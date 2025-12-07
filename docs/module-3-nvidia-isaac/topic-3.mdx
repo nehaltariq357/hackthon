@@ -1,0 +1,574 @@
+---
+sidebar_position: 4
+title: 'Simulation and Deployment'
+---
+
+import DiagramPlaceholder from '@site/src/components/DiagramPlaceholder';
+import ProgressBar from '@site/src/components/ProgressBar';
+
+<ProgressBar />
+
+# Simulation and Deployment
+
+This module covers the simulation and deployment aspects of NVIDIA Isaac, including Isaac Sim for advanced simulation and deployment strategies for Isaac-powered robotic systems.
+
+## Isaac Sim Advanced Features
+
+Isaac Sim provides advanced simulation capabilities for robotics development:
+
+```python title="isaac_sim_advanced_robot.py"
+import omni
+from omni.isaac.core import World
+from omni.isaac.core.robots import Robot
+from omni.isaac.core.utils.nucleus import get_assets_root_path
+from omni.isaac.core.utils.stage import add_reference_to_stage
+from omni.isaac.core.utils.prims import get_prim_at_path
+from omni.isaac.sensor import Camera, LidarRtx
+import numpy as np
+
+class AdvancedIsaacSimRobot:
+    def __init__(self):
+        self.world = World(stage_units_in_meters=1.0)
+        self.robot = None
+        self.camera = None
+        self.lidar = None
+
+    def setup_robot_with_sensors(self):
+        """Setup robot with multiple sensors in Isaac Sim"""
+        # Get assets root path
+        assets_root_path = get_assets_root_path()
+        if assets_root_path is None:
+            carb.log_error("Could not find Isaac Sim assets folder")
+            return False
+
+        # Add robot to stage
+        jetbot_asset_path = assets_root_path + "/Isaac/Robots/Jetbot/jetbot.usd"
+        add_reference_to_stage(usd_path=jetbot_asset_path, prim_path="/World/Robot")
+
+        # Create robot instance
+        self.robot = self.world.scene.add(
+            Robot(
+                prim_path="/World/Robot",
+                name="my_jetbot",
+                position=np.array([0, 0, 0.2]),
+                orientation=np.array([1, 0, 0, 0])
+            )
+        )
+
+        # Add RGB camera
+        self.camera = self.world.scene.add(
+            Camera(
+                prim_path="/World/Robot/chassis/Camera",
+                name="rgb_camera",
+                position=np.array([0.2, 0, 0.1]),
+                frequency=30
+            )
+        )
+
+        # Add LiDAR sensor
+        self.lidar = self.world.scene.add(
+            LidarRtx(
+                prim_path="/World/Robot/chassis/Lidar",
+                name="velodyne_lidar",
+                translation=np.array([0.15, 0, 0.15]),
+                orientation=np.array([0, 0, 0, 1]),
+                config="Velodyne_VLP-16",
+                rotation_frequency=10,
+                samples_per_scan=1000
+            )
+        )
+
+        return True
+
+    def setup_complex_environment(self):
+        """Setup a complex simulation environment"""
+        # Add ground plane
+        self.world.scene.add_default_ground_plane()
+
+        # Add various objects for testing
+        self.add_test_objects()
+
+        # Setup lighting
+        self.setup_environment_lighting()
+
+    def add_test_objects(self):
+        """Add various test objects to the environment"""
+        # Add cubes of different sizes and materials
+        for i in range(5):
+            cube = self.world.scene.add(
+                cuboid.Cuboid(
+                    prim_path=f"/World/Cube_{i}",
+                    name=f"cube_{i}",
+                    position=np.array([2 + i, 0, 0.5]),
+                    size=0.2,
+                    color=np.array([0.5, 0.5, 0.5])
+                )
+            )
+
+        # Add a table
+        table = self.world.scene.add(
+            cuboid.Cuboid(
+                prim_path="/World/Table",
+                name="table",
+                position=np.array([5, 0, 0.4]),
+                size=np.array([1.0, 0.8, 0.8]),
+                color=np.array([0.8, 0.6, 0.2])
+            )
+        )
+
+    def setup_environment_lighting(self):
+        """Setup realistic lighting for the environment"""
+        # Add dome light
+        dome_light = omni.lighting.lightdome domeLightAPI = PhysxSchema.PhysxDomeLightAPI.Apply(dome_light.prim)
+        dome_lightAPI.CreateIntensityAttr(500)
+
+        # Add directional light
+        directional_light = omni.lighting.core.add_directional_light(
+            prim_path="/World/DirectionalLight",
+            intensity=3000,
+            color=np.array([1, 1, 1])
+        )
+
+    def run_simulation_with_data_collection(self):
+        """Run simulation with data collection"""
+        # Reset the world
+        self.world.reset()
+
+        # Data collection variables
+        collected_data = {
+            'images': [],
+            'lidar_data': [],
+            'robot_states': [],
+            'actions': []
+        }
+
+        for step in range(1000):  # Run for 1000 steps
+            # Step the world
+            self.world.step(render=True)
+
+            # Collect sensor data
+            if step % 10 == 0:  # Collect data every 10 steps
+                image_data = self.camera.get_rgb()
+                lidar_data = self.lidar.get_linear_depth_data()
+
+                robot_position, robot_orientation = self.robot.get_world_pose()
+                robot_linear_vel, robot_angular_vel = self.robot.get_linear_velocity(), self.robot.get_angular_velocity()
+
+                collected_data['images'].append(image_data)
+                collected_data['lidar_data'].append(lidar_data)
+                collected_data['robot_states'].append({
+                    'position': robot_position,
+                    'orientation': robot_orientation,
+                    'linear_vel': robot_linear_vel,
+                    'angular_vel': robot_angular_vel
+                })
+
+        return collected_data
+
+# ROS 2 node that interfaces with Isaac Sim
+class IsaacSimInterfaceNode(Node):
+    def __init__(self):
+        super().__init__('isaac_sim_interface_node')
+
+        # Publishers for simulation data
+        self.image_pub = self.create_publisher(CompressedImage, 'sim/camera/image_raw/compressed', 10)
+        self.lidar_pub = self.create_publisher(LaserScan, 'sim/lidar/scan', 10)
+        self.odom_pub = self.create_publisher(Odometry, 'sim/odom', 10)
+
+        # Subscribers for commands
+        self.cmd_vel_sub = self.create_subscription(
+            Twist, 'sim/cmd_vel', self.cmd_vel_callback, 10)
+
+        # Timer for simulation loop
+        self.sim_timer = self.create_timer(0.033, self.simulation_callback)  # ~30 Hz
+
+        # Initialize Isaac Sim
+        self.sim_robot = AdvancedIsaacSimRobot()
+        if self.sim_robot.setup_robot_with_sensors():
+            self.sim_robot.setup_complex_environment()
+            self.get_logger().info('Isaac Sim environment initialized successfully')
+        else:
+            self.get_logger().error('Failed to initialize Isaac Sim environment')
+
+    def cmd_vel_callback(self, msg):
+        """Handle velocity commands from ROS"""
+        # Apply velocity commands to simulated robot
+        # This would interface with the Isaac Sim robot
+        linear_vel = [msg.linear.x, msg.linear.y, msg.linear.z]
+        angular_vel = [msg.angular.x, msg.angular.y, msg.angular.z]
+
+        # Apply to simulated robot (implementation depends on robot type)
+        # self.sim_robot.apply_velocity_command(linear_vel, angular_vel)
+
+    def simulation_callback(self):
+        """Main simulation callback"""
+        # Step the simulation
+        self.sim_robot.world.step(render=True)
+
+        # Publish sensor data
+        self.publish_sensor_data()
+
+    def publish_sensor_data(self):
+        """Publish sensor data as ROS messages"""
+        # Publish camera image
+        try:
+            image_data = self.sim_robot.camera.get_rgb()
+            if image_data is not None:
+                img_msg = self.bridge.cv2_to_compressed_imgmsg(image_data)
+                img_msg.header.stamp = self.get_clock().now().to_msg()
+                img_msg.header.frame_id = 'camera_rgb_optical_frame'
+                self.image_pub.publish(img_msg)
+        except Exception as e:
+            self.get_logger().warn(f'Error publishing camera data: {e}')
+
+        # Publish LiDAR data
+        try:
+            lidar_data = self.sim_robot.lidar.get_linear_depth_data()
+            if lidar_data is not None:
+                scan_msg = LaserScan()
+                scan_msg.header.stamp = self.get_clock().now().to_msg()
+                scan_msg.header.frame_id = 'lidar_frame'
+                scan_msg.angle_min = -np.pi
+                scan_msg.angle_max = np.pi
+                scan_msg.angle_increment = 0.01
+                scan_msg.time_increment = 0.0
+                scan_msg.scan_time = 0.1
+                scan_msg.range_min = 0.1
+                scan_msg.range_max = 100.0
+                scan_msg.ranges = lidar_data.flatten().tolist()
+                self.lidar_pub.publish(scan_msg)
+        except Exception as e:
+            self.get_logger().warn(f'Error publishing lidar data: {e}')
+
+def main(args=None):
+    # Initialize Isaac Sim
+    from omni.isaac.kit import SimulationApp
+    simulation_app = SimulationApp({"headless": False})
+
+    rclpy.init(args=args)
+    sim_node = IsaacSimInterfaceNode()
+
+    try:
+        # Run ROS and Isaac Sim together
+        while simulation_app.is_running() and rclpy.ok():
+            rclpy.spin_once(sim_node, timeout_sec=0.01)
+            # Step Isaac Sim
+            sim_node.sim_robot.world.step(render=True)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sim_node.destroy_node()
+        rclpy.shutdown()
+        simulation_app.close()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Deployment Strategies
+
+Deploying Isaac-powered robots requires careful consideration of hardware and software requirements:
+
+```python title="isaac_deployment_manager.py"
+import subprocess
+import json
+import os
+from pathlib import Path
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+@dataclass
+class HardwareConfig:
+    platform: str  # "jetson", "x86_64", "other"
+    gpu_support: bool
+    memory_gb: int
+    storage_gb: int
+
+@dataclass
+class DeploymentConfig:
+    hardware: HardwareConfig
+    models: List[str]
+    packages: List[str]
+    network_config: Dict[str, str]
+
+class IsaacDeploymentManager:
+    def __init__(self, config_path: str):
+        self.config = self.load_config(config_path)
+        self.deployment_path = Path("/opt/isaac_robot")
+
+    def load_config(self, config_path: str) -> DeploymentConfig:
+        """Load deployment configuration from file"""
+        with open(config_path, 'r') as f:
+            config_data = json.load(f)
+
+        return DeploymentConfig(
+            hardware=HardwareConfig(**config_data['hardware']),
+            models=config_data['models'],
+            packages=config_data['packages'],
+            network_config=config_data['network']
+        )
+
+    def validate_hardware_compatibility(self) -> bool:
+        """Validate that the target hardware is compatible"""
+        # Check platform compatibility
+        if self.config.hardware.platform not in ["jetson", "x86_64"]:
+            self.get_logger().error(f"Unsupported platform: {self.config.hardware.platform}")
+            return False
+
+        # Check memory requirements
+        if self.config.hardware.memory_gb < 4:
+            self.get_logger().error("Insufficient memory for Isaac deployment")
+            return False
+
+        # Check for NVIDIA GPU if required
+        if self.config.hardware.gpu_support:
+            try:
+                result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
+                if result.returncode != 0:
+                    self.get_logger().error("NVIDIA GPU not detected")
+                    return False
+            except FileNotFoundError:
+                self.get_logger().error("nvidia-smi not found - NVIDIA drivers may not be installed")
+                return False
+
+        return True
+
+    def install_dependencies(self):
+        """Install system dependencies for Isaac deployment"""
+        commands = []
+
+        # Install base dependencies
+        if self.config.hardware.platform == "jetson":
+            commands.extend([
+                "apt-get update",
+                "apt-get install -y nvidia-jetpack",
+                "apt-get install -y ros-humble-isaac-ros-*"
+            ])
+        elif self.config.hardware.platform == "x86_64":
+            commands.extend([
+                "apt-get update",
+                "apt-get install -y nvidia-driver-470",
+                "apt-get install -y ros-humble-isaac-ros-*"
+            ])
+
+        # Install Python dependencies
+        commands.append("pip3 install -r requirements.txt")
+
+        for cmd in commands:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"Command failed: {cmd}\n{result.stderr}")
+
+    def deploy_models(self):
+        """Deploy AI models to target hardware"""
+        for model_name in self.config.models:
+            model_path = f"/models/{model_name}"
+            dest_path = self.deployment_path / "models" / model_name
+
+            # Optimize model with TensorRT if possible
+            if self.is_tensorrt_available():
+                self.optimize_model_with_tensorrt(model_path, dest_path)
+            else:
+                # Copy model as-is
+                subprocess.run(["cp", "-r", model_path, dest_path])
+
+    def optimize_model_with_tensorrt(self, model_path: str, dest_path: Path):
+        """Optimize model with TensorRT for deployment"""
+        # Convert ONNX to TensorRT engine
+        engine_path = dest_path.with_suffix('.plan')
+        cmd = [
+            "trtexec",
+            f"--onnx={model_path}",
+            f"--saveEngine={engine_path}",
+            "--fp16",  # Use FP16 precision for better performance
+            "--buildOnly"
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"TensorRT optimization failed: {result.stderr}")
+
+    def setup_networking(self):
+        """Setup networking configuration for the robot"""
+        # Configure ROS domain ID
+        domain_id = self.config.network_config.get('ros_domain_id', 0)
+        os.environ['ROS_DOMAIN_ID'] = str(domain_id)
+
+        # Configure network interfaces if specified
+        if 'network_interfaces' in self.config.network_config:
+            for interface, config in self.config.network_config['network_interfaces'].items():
+                self.configure_network_interface(interface, config)
+
+    def configure_network_interface(self, interface: str, config: Dict):
+        """Configure a specific network interface"""
+        # Set static IP if specified
+        if 'ip_address' in config:
+            cmd = f"ip addr add {config['ip_address']}/{config['subnet_mask']} dev {interface}"
+            subprocess.run(cmd, shell=True)
+
+        # Set up ROS communication
+        if config.get('ros_enabled', True):
+            # Configure DDS settings
+            os.environ['RMW_IMPLEMENTATION'] = 'rmw_cyclonedx_cpp'
+            os.environ['CYCLONEDX_PROFILE'] = 'robot'
+
+    def start_robot_system(self):
+        """Start the deployed robot system"""
+        # Source ROS environment
+        ros_setup = "source /opt/ros/humble/setup.bash"
+
+        # Launch main robot system
+        launch_cmd = f"{ros_setup} && ros2 launch my_robot_bringup robot.launch.py"
+        process = subprocess.Popen(launch_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        return process
+
+    def monitor_deployment(self):
+        """Monitor the deployed system"""
+        import psutil
+        import GPUtil
+
+        # Monitor system resources
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory_percent = psutil.virtual_memory().percent
+
+        # Monitor GPU if available
+        gpu_percent = 0
+        gpu_memory_percent = 0
+        if self.config.hardware.gpu_support:
+            gpus = GPUtil.getGPUs()
+            if gpus:
+                gpu = gpus[0]  # Use first GPU
+                gpu_percent = gpu.load * 100
+                gpu_memory_percent = gpu.memoryUtil * 100
+
+        # Log resource usage
+        self.get_logger().info(
+            f"Resource usage - CPU: {cpu_percent}%, "
+            f"Memory: {memory_percent}%, "
+            f"GPU: {gpu_percent}%, "
+            f"GPU Memory: {gpu_memory_percent}%"
+        )
+
+def main():
+    """Main deployment script"""
+    deployment_manager = IsaacDeploymentManager('deployment_config.json')
+
+    try:
+        # Validate hardware compatibility
+        if not deployment_manager.validate_hardware_compatibility():
+            print("Hardware validation failed")
+            return 1
+
+        # Install dependencies
+        print("Installing dependencies...")
+        deployment_manager.install_dependencies()
+
+        # Deploy models
+        print("Deploying models...")
+        deployment_manager.deploy_models()
+
+        # Setup networking
+        print("Setting up networking...")
+        deployment_manager.setup_networking()
+
+        # Start robot system
+        print("Starting robot system...")
+        robot_process = deployment_manager.start_robot_system()
+
+        # Monitor deployment
+        print("Monitoring deployment...")
+        while True:
+            deployment_manager.monitor_deployment()
+            import time
+            time.sleep(5)
+
+    except Exception as e:
+        print(f"Deployment failed: {e}")
+        return 1
+
+if __name__ == "__main__":
+    main()
+```
+
+## Containerized Deployment with Docker
+
+For consistent deployment across different hardware platforms:
+
+```dockerfile title="Dockerfile.isaac"
+# Use NVIDIA CUDA base image
+FROM nvidia/cuda:11.8-devel-ubuntu22.04
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ROS 2 Humble
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" | tee /etc/apt/sources.list.d/ros2.list
+RUN apt-get update && apt-get install -y \
+    ros-humble-ros-base \
+    ros-humble-isaac-ros-common \
+    ros-humble-isaac-ros-gems \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip3 install -r requirements.txt
+
+# Set environment variables
+ENV ROS_DISTRO=humble
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_REQUIRE_CUDA="cuda>=11.8"
+
+# Copy application code
+COPY . /app
+WORKDIR /app
+
+# Source ROS environment
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+
+# Default command
+CMD ["bash"]
+```
+
+```bash title="deploy_docker.sh"
+#!/bin/bash
+
+# Build the Isaac ROS Docker image
+docker build -t isaac-ros-robot -f Dockerfile.isaac .
+
+# Run the container with GPU support
+docker run -it --gpus all \
+    --env ROS_DOMAIN_ID=42 \
+    --network host \
+    --name isaac-robot \
+    isaac-ros-robot \
+    bash -c "source /opt/ros/humble/setup.bash && python3 robot_main.py"
+```
+
+## Best Practices for Isaac Deployment
+
+- **Hardware Validation**: Always validate hardware compatibility before deployment
+- **Model Optimization**: Use TensorRT to optimize models for target hardware
+- **Resource Monitoring**: Monitor system resources during operation
+- **Configuration Management**: Use configuration files for different deployment scenarios
+- **Rollback Strategy**: Implement rollback capabilities for failed deployments
+- **Security**: Secure communication channels and implement proper access controls
+
+## Summary
+
+Isaac Sim provides powerful simulation capabilities for robotics development, while Isaac's deployment tools enable efficient transfer of trained models and systems to real hardware. By following best practices for simulation and deployment, developers can create robust robotic systems that perform well in real-world scenarios.
+
+<DiagramPlaceholder
+  title="Isaac Deployment Pipeline"
+  description="Shows the pipeline from simulation to deployment in Isaac ecosystem"
+/>

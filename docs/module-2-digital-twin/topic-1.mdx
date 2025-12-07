@@ -1,0 +1,147 @@
+---
+sidebar_position: 2
+title: 'Gazebo Simulation Environment'
+---
+
+import DiagramPlaceholder from '@site/src/components/DiagramPlaceholder';
+import ProgressBar from '@site/src/components/ProgressBar';
+
+<ProgressBar />
+
+# Gazebo Simulation Environment
+
+Gazebo is a powerful 3D simulation environment for robotics that provides realistic physics simulation, high-quality graphics, and convenient programmatic interfaces. It's widely used in robotics research and development.
+
+## Overview of Gazebo
+
+Gazebo provides:
+- **Physics simulation**: Accurate simulation of rigid body dynamics, contact, and friction
+- **Sensor simulation**: Support for various sensors including cameras, LIDAR, IMU, etc.
+- **3D visualization**: High-quality rendering with support for multiple cameras
+- **Plugins**: Extensible architecture for custom functionality
+- **ROS integration**: Seamless integration with ROS and ROS 2
+
+## Setting up a Basic Simulation
+
+Here's how to create a simple robot model for Gazebo:
+
+```xml title="simple_robot.urdf"
+<?xml version="1.0"?>
+<robot name="simple_robot">
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.5 0.5 0.2"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0 0 1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.5 0.5 0.2"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.083" ixy="0.0" ixz="0.0" iyy="0.083" iyz="0.0" izz="0.167"/>
+    </inertial>
+  </link>
+
+  <link name="sensor_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.1" radius="0.05"/>
+      </geometry>
+      <material name="red">
+        <color rgba="1 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="sensor_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="sensor_link"/>
+    <origin xyz="0.2 0 0.1"/>
+  </joint>
+</robot>
+```
+
+## Launching Gazebo with ROS 2
+
+To launch a simulation with ROS 2 integration:
+
+```python title="launch_simulation.py"
+import os
+from launch import LaunchDescription
+from launch.actions import ExecuteProcess
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+
+def generate_launch_description():
+    package_dir = get_package_share_directory('my_robot_description')
+
+    return LaunchDescription([
+        # Launch Gazebo
+        ExecuteProcess(
+            cmd=['gazebo', '--verbose', '-s', 'libgazebo_ros_factory.so', '-s', 'libgazebo_ros_init.so'],
+            output='screen'
+        ),
+
+        # Spawn robot in Gazebo
+        Node(
+            package='gazebo_ros',
+            executable='spawn_entity.py',
+            arguments=['-entity', 'simple_robot', '-file',
+                      os.path.join(package_dir, 'urdf', 'simple_robot.urdf')],
+            output='screen'
+        ),
+    ])
+```
+
+## Sensor Integration
+
+Gazebo can simulate various sensors. Here's an example of a camera sensor:
+
+```xml title="camera_sensor.urdf"
+<gazebo reference="sensor_link">
+  <sensor type="camera" name="camera1">
+    <update_rate>30.0</update_rate>
+    <camera name="head">
+      <horizontal_fov>1.3962634</horizontal_fov>
+      <image>
+        <width>800</width>
+        <height>600</height>
+        <format>R8G8B8</format>
+      </image>
+      <clip>
+        <near>0.1</near>
+        <far>100</far>
+      </clip>
+    </camera>
+    <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+      <ros>
+        <namespace>camera</namespace>
+        <remapping>~/image_raw:=image</remapping>
+        <remapping>~/camera_info:=camera_info</remapping>
+      </ros>
+    </plugin>
+  </sensor>
+</gazebo>
+```
+
+## Best Practices
+
+- **Model complexity**: Balance visual fidelity with simulation performance
+- **Physics parameters**: Carefully tune inertial and friction parameters for realistic behavior
+- **Sensor noise**: Add realistic noise models to sensor data
+- **World design**: Create worlds that reflect real-world testing environments
+
+## Summary
+
+Gazebo provides a comprehensive simulation environment that enables extensive testing and validation of robotic systems before deployment on real hardware. Its integration with ROS 2 makes it an essential tool in the robotics development workflow.
+
+<DiagramPlaceholder
+  title="Gazebo Architecture"
+  description="Shows the relationship between Gazebo, ROS 2, and robot models"
+/>

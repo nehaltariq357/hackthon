@@ -1,0 +1,1062 @@
+---
+sidebar_position: 3
+title: 'Autonomous Behavior Implementation'
+---
+
+import DiagramPlaceholder from '@site/src/components/DiagramPlaceholder';
+import ProgressBar from '@site/src/components/ProgressBar';
+
+<ProgressBar />
+
+# Autonomous Behavior Implementation
+
+This module focuses on implementing autonomous behaviors that integrate all components of the humanoid robot system. We'll create complex behaviors that demonstrate the full capability of the Vision-Language-Action framework in a humanoid context.
+
+## Overview of Autonomous Behaviors
+
+Autonomous behaviors for humanoid robots involve:
+
+- **Behavior Trees**: Hierarchical task execution
+- **State Machines**: Reactive behavior control
+- **Learning Systems**: Adaptive behavior improvement
+- **Social Interaction**: Human-robot interaction protocols
+
+## Complex Behavior Implementation
+
+```python title="complex_behavior_manager.py"
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String, Bool
+from geometry_msgs.msg import Pose, Twist
+from sensor_msgs.msg import JointState, Image, LaserScan
+from action_msgs.msg import GoalStatus
+from rclpy.action import ActionClient
+from threading import Lock
+import json
+import time
+from enum import Enum
+from typing import Dict, Any, List, Optional
+
+class BehaviorState(Enum):
+    IDLE = 1
+    LISTENING = 2
+    UNDERSTANDING = 3
+    PLANNING = 4
+    EXECUTING = 5
+    MONITORING = 6
+    RECOVERING = 7
+    COMPLETED = 8
+    FAILED = 9
+
+class ComplexBehaviorManager(Node):
+    def __init__(self):
+        super().__init__('complex_behavior_manager')
+
+        # Publishers and subscribers
+        self.behavior_command_sub = self.create_subscription(
+            String, 'complex_behavior_command', self.behavior_command_callback, 10)
+        self.behavior_status_pub = self.create_publisher(
+            String, 'behavior_status', 10)
+        self.interrupt_sub = self.create_subscription(
+            Bool, 'behavior_interrupt', self.interrupt_callback, 10)
+
+        # Component interfaces
+        self.vision_sub = self.create_subscription(
+            Image, 'camera/image_raw', self.vision_callback, 10)
+        self.laser_sub = self.create_subscription(
+            LaserScan, 'scan', self.laser_callback, 10)
+        self.joint_state_sub = self.create_subscription(
+            JointState, 'joint_states', self.joint_state_callback, 10)
+
+        # Internal state
+        self.current_behavior = None
+        self.behavior_state = BehaviorState.IDLE
+        self.behavior_params = {}
+        self.interrupt_requested = False
+        self.vision_data = None
+        self.laser_data = None
+        self.joint_positions = {}
+
+        # Thread safety
+        self.state_lock = Lock()
+
+        # Timer for behavior execution
+        self.behavior_timer = self.create_timer(0.1, self.execute_behavior)
+
+    def behavior_command_callback(self, msg):
+        """Handle complex behavior commands"""
+        try:
+            command_data = json.loads(msg.data)
+            behavior_type = command_data.get('behavior', 'unknown')
+            params = command_data.get('parameters', {})
+
+            self.get_logger().info(f'Received behavior command: {behavior_type}')
+
+            # Start the requested behavior
+            self.start_behavior(behavior_type, params)
+
+        except json.JSONDecodeError:
+            self.get_logger().error(f'Invalid JSON in behavior command: {msg.data}')
+        except Exception as e:
+            self.get_logger().error(f'Error processing behavior command: {e}')
+
+    def start_behavior(self, behavior_type: str, params: Dict[str, Any]):
+        """Start executing a complex behavior"""
+        with self.state_lock:
+            self.current_behavior = behavior_type
+            self.behavior_params = params
+            self.behavior_state = BehaviorState.LISTENING
+            self.interrupt_requested = False
+
+        self.get_logger().info(f'Starting behavior: {behavior_type}')
+        self.publish_behavior_status(f'STARTED: {behavior_type}')
+
+    def interrupt_callback(self, msg):
+        """Handle behavior interruption requests"""
+        if msg.data:
+            self.interrupt_requested = True
+            self.get_logger().info('Behavior interruption requested')
+            self.publish_behavior_status('INTERRUPTED')
+
+    def vision_callback(self, msg):
+        """Update vision data"""
+        self.vision_data = msg
+
+    def laser_callback(self, msg):
+        """Update laser data"""
+        self.laser_data = msg.ranges
+
+    def joint_state_callback(self, msg):
+        """Update joint positions"""
+        for i, name in enumerate(msg.name):
+            self.joint_positions[name] = msg.position[i]
+
+    def execute_behavior(self):
+        """Execute the current behavior based on state"""
+        if self.behavior_state == BehaviorState.IDLE:
+            return
+
+        if self.interrupt_requested:
+            self.behavior_state = BehaviorState.FAILED
+            self.publish_behavior_status('INTERRUPTED')
+            return
+
+        # Execute based on current state
+        if self.behavior_state == BehaviorState.LISTENING:
+            self.execute_listening_state()
+        elif self.behavior_state == BehaviorState.UNDERSTANDING:
+            self.execute_understanding_state()
+        elif self.behavior_state == BehaviorState.PLANNING:
+            self.execute_planning_state()
+        elif self.behavior_state == BehaviorState.EXECUTING:
+            self.execute_executing_state()
+        elif self.behavior_state == BehaviorState.MONITORING:
+            self.execute_monitoring_state()
+        elif self.behavior_state == BehaviorState.RECOVERING:
+            self.execute_recovering_state()
+
+    def execute_listening_state(self):
+        """Execute listening state - waiting for input"""
+        # In a real system, this would wait for voice or gesture input
+        # For demo, transition to understanding after a short delay
+        self.behavior_state = BehaviorState.UNDERSTANDING
+        self.get_logger().info('Transitioned to understanding state')
+
+    def execute_understanding_state(self):
+        """Execute understanding state - processing input"""
+        # Process the input to understand the request
+        if self.current_behavior:
+            self.get_logger().info(f'Understanding behavior request: {self.current_behavior}')
+            self.behavior_state = BehaviorState.PLANNING
+
+    def execute_planning_state(self):
+        """Execute planning state - creating action plan"""
+        if self.current_behavior == 'guided_tour':
+            self.plan_guided_tour()
+        elif self.current_behavior == 'object_search':
+            self.plan_object_search()
+        elif self.current_behavior == 'social_interaction':
+            self.plan_social_interaction()
+        else:
+            self.get_logger().warn(f'Unknown behavior type: {self.current_behavior}')
+            self.behavior_state = BehaviorState.FAILED
+
+    def plan_guided_tour(self):
+        """Plan a guided tour behavior"""
+        self.get_logger().info('Planning guided tour')
+        # Create a sequence of navigation and explanation steps
+        self.behavior_plan = [
+            {'action': 'navigate', 'params': {'location': 'entrance', 'description': 'Welcome to our facility!'}},
+            {'action': 'navigate', 'params': {'location': 'lobby', 'description': 'This is our main lobby area.'}},
+            {'action': 'navigate', 'params': {'location': 'lab', 'description': 'Here is where the research happens.'}},
+            {'action': 'navigate', 'params': {'location': 'exit', 'description': 'Thank you for the visit!'}}
+        ]
+        self.current_plan_step = 0
+        self.behavior_state = BehaviorState.EXECUTING
+
+    def plan_object_search(self):
+        """Plan an object search behavior"""
+        self.get_logger().info('Planning object search')
+        target_object = self.behavior_params.get('object', 'unknown')
+
+        self.behavior_plan = [
+            {'action': 'search_area', 'params': {'object': target_object}},
+            {'action': 'approach_object', 'params': {'object': target_object}},
+            {'action': 'verify_object', 'params': {'object': target_object}},
+            {'action': 'report_result', 'params': {'object': target_object}}
+        ]
+        self.current_plan_step = 0
+        self.behavior_state = BehaviorState.EXECUTING
+
+    def plan_social_interaction(self):
+        """Plan a social interaction behavior"""
+        self.get_logger().info('Planning social interaction')
+        interaction_type = self.behavior_params.get('type', 'greeting')
+
+        if interaction_type == 'greeting':
+            self.behavior_plan = [
+                {'action': 'detect_person', 'params': {}},
+                {'action': 'greet_person', 'params': {}},
+                {'action': 'wait_for_response', 'params': {}},
+                {'action': 'engage_conversation', 'params': {}}
+            ]
+        elif interaction_type == 'assistance':
+            self.behavior_plan = [
+                {'action': 'detect_person', 'params': {}},
+                {'action': 'offer_assistance', 'params': {}},
+                {'action': 'wait_for_request', 'params': {}},
+                {'action': 'provide_assistance', 'params': {}}
+            ]
+
+        self.current_plan_step = 0
+        self.behavior_state = BehaviorState.EXECUTING
+
+    def execute_executing_state(self):
+        """Execute the current plan step"""
+        if not hasattr(self, 'behavior_plan') or self.current_plan_step >= len(self.behavior_plan):
+            # Plan completed
+            self.behavior_state = BehaviorState.MONITORING
+            return
+
+        current_step = self.behavior_plan[self.current_plan_step]
+        action = current_step['action']
+        params = current_step['params']
+
+        self.get_logger().info(f'Executing step {self.current_plan_step + 1}: {action}')
+
+        # Execute the action
+        success = self.execute_action(action, params)
+
+        if success:
+            self.current_plan_step += 1
+            if self.current_plan_step >= len(self.behavior_plan):
+                # All steps completed
+                self.behavior_state = BehaviorState.MONITORING
+        else:
+            # Action failed, try again or go to recovery
+            self.behavior_state = BehaviorState.RECOVERING
+
+    def execute_action(self, action: str, params: Dict[str, Any]) -> bool:
+        """Execute a specific action"""
+        if action == 'navigate':
+            return self.execute_navigation_action(params)
+        elif action == 'search_area':
+            return self.execute_search_action(params)
+        elif action == 'approach_object':
+            return self.execute_approach_action(params)
+        elif action == 'detect_person':
+            return self.execute_detect_person_action(params)
+        elif action == 'greet_person':
+            return self.execute_greet_action(params)
+        elif action == 'verify_object':
+            return self.execute_verify_action(params)
+        else:
+            self.get_logger().warn(f'Unknown action: {action}')
+            return False
+
+    def execute_navigation_action(self, params: Dict[str, Any]) -> bool:
+        """Execute navigation action"""
+        location = params.get('location', 'unknown')
+        description = params.get('description', '')
+
+        self.get_logger().info(f'Navigating to {location}: {description}')
+        # In real implementation, this would use navigation stack
+        # For demo, simulate completion after delay
+        time.sleep(0.5)  # Simulate navigation time
+        return True
+
+    def execute_search_action(self, params: Dict[str, Any]) -> bool:
+        """Execute search action"""
+        target_object = params.get('object', 'unknown')
+        self.get_logger().info(f'Searching for {target_object}')
+
+        # In real implementation, this would use perception system
+        # For demo, simulate search and return success
+        time.sleep(1.0)  # Simulate search time
+        return True
+
+    def execute_approach_action(self, params: Dict[str, Any]) -> bool:
+        """Execute approach action"""
+        target_object = params.get('object', 'unknown')
+        self.get_logger().info(f'Approaching {target_object}')
+
+        # In real implementation, navigate to object
+        time.sleep(0.5)  # Simulate approach time
+        return True
+
+    def execute_detect_person_action(self, params: Dict[str, Any]) -> bool:
+        """Execute person detection action"""
+        self.get_logger().info('Detecting person')
+
+        # In real implementation, use perception system
+        time.sleep(0.3)  # Simulate detection time
+        return True
+
+    def execute_greet_action(self, params: Dict[str, Any]) -> bool:
+        """Execute greeting action"""
+        self.get_logger().info('Greeting person')
+        # In real implementation, use speech system
+        return True
+
+    def execute_verify_action(self, params: Dict[str, Any]) -> bool:
+        """Execute object verification action"""
+        target_object = params.get('object', 'unknown')
+        self.get_logger().info(f'Verifying {target_object}')
+
+        # In real implementation, use perception to verify
+        time.sleep(0.2)  # Simulate verification time
+        return True
+
+    def execute_monitoring_state(self):
+        """Monitor behavior completion"""
+        self.behavior_state = BehaviorState.COMPLETED
+        self.publish_behavior_status(f'COMPLETED: {self.current_behavior}')
+        self.get_logger().info(f'Behavior completed: {self.current_behavior}')
+
+        # Reset for next behavior
+        with self.state_lock:
+            self.current_behavior = None
+            self.behavior_state = BehaviorState.IDLE
+
+    def execute_recovering_state(self):
+        """Execute recovery from failure"""
+        self.get_logger().info(f'Attempting to recover from failure in {self.current_behavior}')
+
+        # In real implementation, try alternative approaches
+        self.behavior_state = BehaviorState.FAILED
+        self.publish_behavior_status(f'FAILED: {self.current_behavior}')
+
+        # Reset for next behavior
+        with self.state_lock:
+            self.current_behavior = None
+            self.behavior_state = BehaviorState.IDLE
+
+    def publish_behavior_status(self, status: str):
+        """Publish behavior status"""
+        status_msg = String()
+        status_msg.data = status
+        self.behavior_status_pub.publish(status_msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    behavior_manager = ComplexBehaviorManager()
+
+    try:
+        rclpy.spin(behavior_manager)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        behavior_manager.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Learning and Adaptation System
+
+```python title="adaptive_behavior_system.py"
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from geometry_msgs.msg import Pose
+from sensor_msgs.msg import JointState
+from builtin_interfaces.msg import Time
+import json
+import numpy as np
+from typing import Dict, List, Any, Optional
+import pickle
+import os
+
+class AdaptiveBehaviorSystem(Node):
+    def __init__(self):
+        super().__init__('adaptive_behavior_system')
+
+        # Publishers and subscribers
+        self.experience_sub = self.create_subscription(
+            String, 'behavior_experience', self.experience_callback, 10)
+        self.adaptation_command_sub = self.create_subscription(
+            String, 'adaptation_command', self.adaptation_command_callback, 10)
+
+        # Internal state
+        self.experience_buffer = []
+        self.behavior_models = {}
+        self.performance_history = {}
+        self.adaptation_threshold = 0.7  # Performance threshold for adaptation
+
+        # Load any existing models
+        self.load_models()
+
+        # Timer for continuous adaptation
+        self.adaptation_timer = self.create_timer(5.0, self.periodic_adaptation)
+
+    def experience_callback(self, msg):
+        """Handle experience data from behaviors"""
+        try:
+            experience_data = json.loads(msg.data)
+            behavior_name = experience_data.get('behavior', 'unknown')
+            outcome = experience_data.get('outcome', 'unknown')
+            context = experience_data.get('context', {})
+            performance = experience_data.get('performance', 0.0)
+
+            # Store experience
+            experience = {
+                'behavior': behavior_name,
+                'outcome': outcome,
+                'context': context,
+                'performance': performance,
+                'timestamp': self.get_clock().now().nanoseconds / 1e9
+            }
+
+            self.experience_buffer.append(experience)
+
+            # Keep only recent experiences (last 100)
+            if len(self.experience_buffer) > 100:
+                self.experience_buffer = self.experience_buffer[-100:]
+
+            self.get_logger().info(f'Recorded experience for {behavior_name}, performance: {performance:.2f}')
+
+            # Update performance history
+            if behavior_name not in self.performance_history:
+                self.performance_history[behavior_name] = []
+            self.performance_history[behavior_name].append(performance)
+
+            # Check if adaptation is needed
+            self.check_adaptation_needed(behavior_name)
+
+        except json.JSONDecodeError:
+            self.get_logger().error(f'Invalid JSON in experience: {msg.data}')
+        except Exception as e:
+            self.get_logger().error(f'Error processing experience: {e}')
+
+    def adaptation_command_callback(self, msg):
+        """Handle explicit adaptation commands"""
+        try:
+            command_data = json.loads(msg.data)
+            command = command_data.get('command', 'unknown')
+            target_behavior = command_data.get('behavior', 'all')
+
+            if command == 'adapt':
+                self.adapt_behavior(target_behavior)
+            elif command == 'reset':
+                self.reset_behavior(target_behavior)
+            elif command == 'save':
+                self.save_models()
+            elif command == 'load':
+                self.load_models()
+
+        except json.JSONDecodeError:
+            self.get_logger().error(f'Invalid JSON in adaptation command: {msg.data}')
+
+    def check_adaptation_needed(self, behavior_name: str):
+        """Check if adaptation is needed for a behavior"""
+        if behavior_name in self.performance_history:
+            recent_performance = self.performance_history[behavior_name][-5:]  # Last 5 performances
+            if len(recent_performance) >= 5:
+                avg_performance = sum(recent_performance) / len(recent_performance)
+
+                if avg_performance < self.adaptation_threshold:
+                    self.get_logger().warn(f'Performance degradation detected for {behavior_name}, adapting...')
+                    self.adapt_behavior(behavior_name)
+
+    def adapt_behavior(self, behavior_name: str):
+        """Adapt a specific behavior based on experience"""
+        if behavior_name == 'all':
+            # Adapt all behaviors
+            for name in self.performance_history.keys():
+                self._adapt_single_behavior(name)
+        else:
+            self._adapt_single_behavior(behavior_name)
+
+    def _adapt_single_behavior(self, behavior_name: str):
+        """Adapt a single behavior"""
+        self.get_logger().info(f'Adapting behavior: {behavior_name}')
+
+        # Get relevant experiences
+        relevant_experiences = [
+            exp for exp in self.experience_buffer
+            if exp['behavior'] == behavior_name
+        ]
+
+        if len(relevant_experiences) < 3:
+            self.get_logger().info(f'Not enough experiences to adapt {behavior_name}')
+            return
+
+        # Analyze experiences to identify patterns
+        successful_experiences = [exp for exp in relevant_experiences if exp['outcome'] == 'success']
+        failed_experiences = [exp for exp in relevant_experiences if exp['outcome'] == 'failure']
+
+        # Identify conditions that lead to success/failure
+        success_contexts = [exp['context'] for exp in successful_experiences]
+        failure_contexts = [exp['context'] for exp in failed_experiences]
+
+        # Create adaptation strategy
+        adaptation_strategy = self.create_adaptation_strategy(
+            success_contexts, failure_contexts, behavior_name
+        )
+
+        # Apply adaptation
+        self.apply_adaptation(adaptation_strategy, behavior_name)
+
+        self.get_logger().info(f'Adaptation completed for {behavior_name}')
+
+    def create_adaptation_strategy(self, success_contexts: List[Dict],
+                                 failure_contexts: List[Dict], behavior_name: str) -> Dict[str, Any]:
+        """Create an adaptation strategy based on experience analysis"""
+        strategy = {
+            'behavior': behavior_name,
+            'modifications': [],
+            'new_parameters': {}
+        }
+
+        # Analyze context differences between success and failure
+        if success_contexts and failure_contexts:
+            # Example: If lighting condition affects performance
+            success_lighting = [ctx.get('lighting', 0.5) for ctx in success_contexts if 'lighting' in ctx]
+            failure_lighting = [ctx.get('lighting', 0.5) for ctx in failure_contexts if 'lighting' in ctx]
+
+            if success_lighting and failure_lighting:
+                avg_success_lighting = sum(success_lighting) / len(success_lighting)
+                avg_failure_lighting = sum(failure_lighting) / len(failure_lighting)
+
+                if abs(avg_success_lighting - avg_failure_lighting) > 0.2:
+                    strategy['new_parameters']['lighting_sensitivity'] = avg_success_lighting
+
+            # Example: If object size affects performance
+            success_object_sizes = [ctx.get('object_size', 0.1) for ctx in success_contexts if 'object_size' in ctx]
+            failure_object_sizes = [ctx.get('object_size', 0.1) for ctx in failure_contexts if 'object_size' in ctx]
+
+            if success_object_sizes and failure_object_sizes:
+                avg_success_size = sum(success_object_sizes) / len(success_object_sizes)
+                avg_failure_size = sum(failure_object_sizes) / len(failure_object_sizes)
+
+                if abs(avg_success_size - avg_failure_size) > 0.05:
+                    strategy['new_parameters']['size_threshold'] = (avg_success_size + avg_failure_size) / 2
+
+        return strategy
+
+    def apply_adaptation(self, strategy: Dict[str, Any], behavior_name: str):
+        """Apply the adaptation strategy to a behavior"""
+        # In a real system, this would update behavior parameters or models
+        # For this example, we'll just store the strategy
+        self.behavior_models[behavior_name] = strategy
+
+        # Publish adaptation notification
+        adaptation_msg = String()
+        adaptation_msg.data = json.dumps({
+            'behavior': behavior_name,
+            'adaptation_applied': True,
+            'parameters': strategy.get('new_parameters', {})
+        })
+
+        adaptation_pub = self.create_publisher(String, f'{behavior_name}_adaptation', 10)
+        adaptation_pub.publish(adaptation_msg)
+
+    def reset_behavior(self, behavior_name: str):
+        """Reset a behavior to default parameters"""
+        if behavior_name in self.behavior_models:
+            del self.behavior_models[behavior_name]
+            self.get_logger().info(f'Reset behavior: {behavior_name}')
+
+    def periodic_adaptation(self):
+        """Periodically check for adaptation opportunities"""
+        for behavior_name in self.performance_history.keys():
+            self.check_adaptation_needed(behavior_name)
+
+    def save_models(self):
+        """Save learned models to file"""
+        models_data = {
+            'behavior_models': self.behavior_models,
+            'performance_history': self.performance_history,
+            'experience_buffer': self.experience_buffer
+        }
+
+        try:
+            with open('/tmp/humanoid_models.pkl', 'wb') as f:
+                pickle.dump(models_data, f)
+            self.get_logger().info('Models saved successfully')
+        except Exception as e:
+            self.get_logger().error(f'Error saving models: {e}')
+
+    def load_models(self):
+        """Load learned models from file"""
+        if os.path.exists('/tmp/humanoid_models.pkl'):
+            try:
+                with open('/tmp/humanoid_models.pkl', 'rb') as f:
+                    models_data = pickle.load(f)
+
+                self.behavior_models = models_data.get('behavior_models', {})
+                self.performance_history = models_data.get('performance_history', {})
+                self.experience_buffer = models_data.get('experience_buffer', [])
+
+                self.get_logger().info('Models loaded successfully')
+            except Exception as e:
+                self.get_logger().error(f'Error loading models: {e}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    adaptation_system = AdaptiveBehaviorSystem()
+
+    try:
+        rclpy.spin(adaptation_system)
+    except KeyboardInterrupt:
+        # Save models before shutting down
+        adaptation_system.save_models()
+        pass
+    finally:
+        adaptation_system.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Social Interaction Behaviors
+
+```python title="social_interaction_behaviors.py"
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String, Bool
+from geometry_msgs.msg import Pose, Twist
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import json
+import math
+from typing import Dict, Any, List, Optional
+
+class SocialInteractionBehaviors(Node):
+    def __init__(self):
+        super().__init__('social_interaction_behaviors')
+
+        # Initialize CV Bridge
+        self.bridge = CvBridge()
+
+        # Publishers and subscribers
+        self.social_command_sub = self.create_subscription(
+            String, 'social_behavior_command', self.social_command_callback, 10)
+        self.face_detection_sub = self.create_subscription(
+            String, 'face_detection_results', self.face_detection_callback, 10)
+        self.speech_recognition_sub = self.create_subscription(
+            String, 'speech_recognition', self.speech_recognition_callback, 10)
+        self.social_status_pub = self.create_publisher(
+            String, 'social_status', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.head_control_pub = self.create_publisher(
+            String, 'head_control', 10)  # For head/eye movements
+
+        # Internal state
+        self.attended_person = None
+        self.conversation_history = []
+        self.social_engagement_active = False
+        self.face_tracking_active = False
+
+        # Social behavior parameters
+        self.social_params = {
+            'personal_space': 1.0,  # meters
+            'greeting_distance': 1.5,  # meters
+            'attention_span': 10.0,  # seconds
+            'gaze_timeout': 3.0  # seconds
+        }
+
+        # Timer for social behavior execution
+        self.social_timer = self.create_timer(0.1, self.social_behavior_loop)
+
+    def social_command_callback(self, msg):
+        """Handle social behavior commands"""
+        try:
+            command_data = json.loads(msg.data)
+            behavior = command_data.get('behavior', 'unknown')
+            params = command_data.get('parameters', {})
+
+            self.get_logger().info(f'Received social behavior: {behavior}')
+
+            if behavior == 'initiate_engagement':
+                self.initiate_social_engagement(params)
+            elif behavior == 'maintain_engagement':
+                self.maintain_social_engagement(params)
+            elif behavior == 'terminate_engagement':
+                self.terminate_social_engagement(params)
+            elif behavior == 'greet_person':
+                self.greet_person(params)
+            elif behavior == 'follow_person':
+                self.follow_person(params)
+            else:
+                self.get_logger().warn(f'Unknown social behavior: {behavior}')
+
+        except json.JSONDecodeError:
+            self.get_logger().error(f'Invalid JSON in social command: {msg.data}')
+
+    def face_detection_callback(self, msg):
+        """Handle face detection results"""
+        try:
+            faces_data = json.loads(msg.data)
+            faces = faces_data.get('faces', [])
+
+            if faces:
+                # Track the closest face
+                closest_face = min(faces, key=lambda f: f.get('distance', float('inf')))
+                self.attended_person = closest_face
+                self.face_tracking_active = True
+            else:
+                self.face_tracking_active = False
+                if self.social_engagement_active:
+                    self.handle_person_lost()
+
+        except json.JSONDecodeError:
+            self.get_logger().error(f'Invalid JSON in face detection: {msg.data}')
+
+    def speech_recognition_callback(self, msg):
+        """Handle speech recognition results"""
+        speech_data = msg.data  # In practice, this might be JSON
+
+        if self.social_engagement_active and self.attended_person:
+            # Add to conversation history
+            self.conversation_history.append({
+                'speaker': 'human',
+                'text': speech_data,
+                'timestamp': self.get_clock().now().nanoseconds / 1e9
+            })
+
+            # Respond appropriately
+            self.generate_social_response(speech_data)
+
+    def initiate_social_engagement(self, params: Dict[str, Any]):
+        """Initiate social engagement with detected person"""
+        if self.attended_person:
+            distance = self.attended_person.get('distance', float('inf'))
+
+            if distance <= self.social_params['greeting_distance']:
+                self.social_engagement_active = True
+                self.get_logger().info('Social engagement initiated')
+
+                # Greet the person
+                self.greet_person(params)
+
+                # Turn to face them
+                self.turn_to_face_person()
+            else:
+                self.get_logger().info(f'Person too far for engagement: {distance:.2f}m')
+        else:
+            self.get_logger().info('No person detected for engagement')
+
+    def maintain_social_engagement(self, params: Dict[str, Any]):
+        """Maintain active social engagement"""
+        if self.social_engagement_active and self.attended_person:
+            # Keep appropriate distance
+            distance = self.attended_person.get('distance', float('inf'))
+
+            if distance > self.social_params['personal_space'] * 2:
+                # Person moved away, follow if allowed
+                if params.get('should_follow', False):
+                    self.follow_person({'target_person': self.attended_person})
+            elif distance < self.social_params['personal_space']:
+                # Too close, move back
+                self.move_away_from_person()
+
+            # Maintain eye contact/gaze
+            self.maintain_gaze_contact()
+
+    def terminate_social_engagement(self, params: Dict[str, Any]):
+        """Terminate social engagement"""
+        self.social_engagement_active = False
+        self.attended_person = None
+        self.face_tracking_active = False
+        self.conversation_history = []
+
+        self.get_logger().info('Social engagement terminated')
+
+    def greet_person(self, params: Dict[str, Any]):
+        """Greet the detected person"""
+        greeting_type = params.get('greeting_type', 'standard')
+
+        greetings = {
+            'standard': 'Hello! How can I help you today?',
+            'formal': 'Good day. It is a pleasure to meet you.',
+            'informal': 'Hi there! What brings you here?'
+        }
+
+        greeting_text = greetings.get(greeting_type, greetings['standard'])
+
+        # Publish greeting to speech system
+        greeting_msg = String()
+        greeting_msg.data = greeting_text
+        greeting_pub = self.create_publisher(String, 'tts_input', 10)
+        greeting_pub.publish(greeting_msg)
+
+        self.get_logger().info(f'Greeting: {greeting_text}')
+
+    def follow_person(self, params: Dict[str, Any]):
+        """Follow the specified person"""
+        target_person = params.get('target_person', self.attended_person)
+
+        if target_person:
+            # Calculate relative position
+            person_x = target_person.get('position_2d', {}).get('x', 0)
+            person_y = target_person.get('position_2d', {}).get('y', 0)
+
+            # Move to maintain appropriate following distance
+            cmd_vel = Twist()
+            cmd_vel.linear.x = 0.3  # Move forward
+            cmd_vel.angular.z = -person_x * 0.5  # Correct heading
+
+            self.cmd_vel_pub.publish(cmd_vel)
+
+            self.get_logger().info(f'Following person at position ({person_x:.2f}, {person_y:.2f})')
+
+    def turn_to_face_person(self):
+        """Turn robot to face the attended person"""
+        if self.attended_person:
+            # Get person's position relative to robot
+            person_2d = self.attended_person.get('position_2d', {})
+            person_x = person_2d.get('x', 0)
+
+            # Turn head/eyes to look at person
+            head_control_msg = String()
+            head_control_msg.data = json.dumps({
+                'pan': person_x * 0.1,  # Adjust pan based on x position
+                'tilt': 0.0  # Keep level
+            })
+            self.head_control_pub.publish(head_control_msg)
+
+    def move_away_from_person(self):
+        """Move away from person to maintain personal space"""
+        cmd_vel = Twist()
+        cmd_vel.linear.x = -0.2  # Move backward slowly
+        cmd_vel.angular.z = 0.0
+
+        self.cmd_vel_pub.publish(cmd_vel)
+
+    def maintain_gaze_contact(self):
+        """Maintain appropriate gaze contact with person"""
+        if self.attended_person:
+            # Continue looking at person
+            self.turn_to_face_person()
+
+    def handle_person_lost(self):
+        """Handle when attended person is no longer detected"""
+        if self.social_engagement_active:
+            # Wait briefly to see if person reappears
+            # In a real system, you might implement a search behavior
+            self.get_logger().info('Attended person no longer detected')
+
+    def generate_social_response(self, human_speech: str):
+        """Generate appropriate social response to human speech"""
+        human_speech_lower = human_speech.lower()
+
+        # Simple response generation based on keywords
+        if any(word in human_speech_lower for word in ['hello', 'hi', 'hey']):
+            response = 'Hello! Nice to meet you.'
+        elif any(word in human_speech_lower for word in ['how are you', 'how are you doing']):
+            response = 'I am functioning well, thank you for asking!'
+        elif any(word in human_speech_lower for word in ['what', 'who', 'where']):
+            response = 'I am a humanoid robot designed to assist and interact with people.'
+        elif any(word in human_speech_lower for word in ['bye', 'goodbye', 'see you']):
+            response = 'Goodbye! It was nice talking with you.'
+            self.terminate_social_engagement({})
+        else:
+            response = 'I understand. How else can I help you?'
+
+        # Publish response to speech system
+        response_msg = String()
+        response_msg.data = response
+        response_pub = self.create_publisher(String, 'tts_input', 10)
+        response_pub.publish(response_msg)
+
+        # Add to conversation history
+        self.conversation_history.append({
+            'speaker': 'robot',
+            'text': response,
+            'timestamp': self.get_clock().now().nanoseconds / 1e9
+        })
+
+    def social_behavior_loop(self):
+        """Main social behavior execution loop"""
+        status_msg = String()
+        status_data = {
+            'engagement_active': self.social_engagement_active,
+            'face_tracking': self.face_tracking_active,
+            'attended_person': self.attended_person is not None,
+            'conversation_length': len(self.conversation_history)
+        }
+        status_msg.data = json.dumps(status_data)
+        self.social_status_pub.publish(status_msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    social_behaviors = SocialInteractionBehaviors()
+
+    try:
+        rclpy.spin(social_behaviors)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        social_behaviors.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Integration and Testing
+
+```python title="capstone_integration_test.py"
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from geometry_msgs.msg import Twist
+import json
+import time
+from typing import Dict, Any
+
+class CapstoneIntegrationTest(Node):
+    def __init__(self):
+        super().__init__('capstone_integration_test')
+
+        # Publishers
+        self.task_command_pub = self.create_publisher(
+            String, 'capstone_task_command', 10)
+        self.complex_behavior_pub = self.create_publisher(
+            String, 'complex_behavior_command', 10)
+        self.social_behavior_pub = self.create_publisher(
+            String, 'social_behavior_command', 10)
+
+        # Test execution
+        self.test_timer = self.create_timer(5.0, self.run_next_test)
+        self.test_sequence = [
+            self.test_guided_tour,
+            self.test_object_search,
+            self.test_social_interaction,
+            self.test_adaptive_behavior
+        ]
+        self.current_test_index = 0
+
+    def run_next_test(self):
+        """Run the next test in sequence"""
+        if self.current_test_index < len(self.test_sequence):
+            test_func = self.test_sequence[self.current_test_index]
+            self.get_logger().info(f'Running test {self.current_test_index + 1}: {test_func.__name__}')
+
+            try:
+                test_func()
+                self.current_test_index += 1
+            except Exception as e:
+                self.get_logger().error(f'Test {test_func.__name__} failed: {e}')
+                self.current_test_index += 1
+        else:
+            self.get_logger().info('All integration tests completed')
+            self.test_timer.cancel()
+
+    def test_guided_tour(self):
+        """Test guided tour behavior"""
+        task_command = {
+            'type': 'navigate_and_interact',
+            'parameters': {
+                'location': 'kitchen'
+            }
+        }
+
+        msg = String()
+        msg.data = json.dumps(task_command)
+        self.task_command_pub.publish(msg)
+
+        self.get_logger().info('Guided tour test initiated')
+
+    def test_object_search(self):
+        """Test object search behavior"""
+        behavior_command = {
+            'behavior': 'object_search',
+            'parameters': {
+                'object': 'cup'
+            }
+        }
+
+        msg = String()
+        msg.data = json.dumps(behavior_command)
+        self.complex_behavior_pub.publish(msg)
+
+        self.get_logger().info('Object search test initiated')
+
+    def test_social_interaction(self):
+        """Test social interaction"""
+        social_command = {
+            'behavior': 'initiate_engagement',
+            'parameters': {
+                'greeting_type': 'standard'
+            }
+        }
+
+        msg = String()
+        msg.data = json.dumps(social_command)
+        self.social_behavior_pub.publish(msg)
+
+        self.get_logger().info('Social interaction test initiated')
+
+    def test_adaptive_behavior(self):
+        """Test adaptation system"""
+        # Send experience data to trigger adaptation
+        experience_data = {
+            'behavior': 'object_search',
+            'outcome': 'failure',
+            'context': {'lighting': 0.2, 'object_size': 0.05},
+            'performance': 0.3
+        }
+
+        experience_pub = self.create_publisher(String, 'behavior_experience', 10)
+        msg = String()
+        msg.data = json.dumps(experience_data)
+        experience_pub.publish(msg)
+
+        self.get_logger().info('Adaptive behavior test initiated')
+
+def main(args=None):
+    rclpy.init(args=args)
+    integration_test = CapstoneIntegrationTest()
+
+    try:
+        rclpy.spin(integration_test)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        integration_test.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Best Practices for Autonomous Behavior
+
+- **Modularity**: Design behaviors as independent, testable modules
+- **Safety**: Implement safety checks and fallback behaviors
+- **Adaptability**: Include learning and adaptation mechanisms
+- **Monitoring**: Continuously monitor behavior execution
+- **Testing**: Extensive testing in simulation before deployment
+
+## Summary
+
+The capstone project demonstrates the integration of all components learned throughout the course. Autonomous behavior implementation requires careful coordination between perception, cognition, and action systems. The humanoid robot system showcases how Vision-Language-Action models can enable sophisticated human-robot interaction and task execution. Success depends on robust system integration, adaptive learning mechanisms, and careful attention to safety and reliability.
+
+<DiagramPlaceholder
+  title="Autonomous Behavior Architecture"
+  description="Shows the architecture of autonomous behaviors in the humanoid robot system"
+/>

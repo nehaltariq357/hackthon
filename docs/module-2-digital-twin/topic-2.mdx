@@ -1,0 +1,207 @@
+---
+sidebar_position: 3
+title: 'Unity Integration for Robotics'
+---
+
+import DiagramPlaceholder from '@site/src/components/DiagramPlaceholder';
+import ProgressBar from '@site/src/components/ProgressBar';
+
+<ProgressBar />
+
+# Unity Integration for Robotics
+
+Unity is a powerful 3D development platform that can be used for robotics simulation and visualization. Its advanced rendering capabilities and physics engine make it suitable for creating high-fidelity digital twins of robotic systems.
+
+## Unity Robotics Setup
+
+Unity provides the Unity Robotics Hub and several packages to facilitate robotics development:
+
+- **Unity Robotics Hub**: A package manager and tool for robotics-specific packages
+- **ROS-TCP-Connector**: Enables communication between Unity and ROS 2
+- **Unity Perception**: Tools for generating synthetic training data
+- **Unity Simulation**: Tools for large-scale simulation
+
+## Setting up ROS-TCP-Connector
+
+The ROS-TCP-Connector allows Unity to communicate with ROS 2 systems. Here's a basic setup:
+
+```csharp title="RosConnector.cs"
+using UnityEngine;
+using Unity.Robotics.ROSTCPConnector;
+using Unity.Robotics.ROSTCPConnector.MessageGeneration;
+using RosMessageTypes.Std;
+
+public class RosConnector : MonoBehaviour
+{
+    ROSConnection ros;
+    public string rosIPAddress = "127.0.0.1";
+    public int rosPort = 10000;
+
+    void Start()
+    {
+        ros = ROSConnection.GetOrCreateInstance();
+        ros.Initialize(rosIPAddress, rosPort);
+    }
+
+    public void SendCommand(string command)
+    {
+        // Create and publish a message
+        StringMsg msg = new StringMsg(command);
+        ros.Send("robot_command", msg);
+    }
+
+    void OnMessageReceived(Message message)
+    {
+        // Handle incoming messages
+        StringMsg receivedMsg = message as StringMsg;
+        Debug.Log("Received: " + receivedMsg.data);
+    }
+}
+```
+
+## Unity Robot Control Example
+
+Here's an example of controlling a Unity robot with ROS 2:
+
+```csharp title="RobotController.cs"
+using UnityEngine;
+using Unity.Robotics.ROSTCPConnector;
+using RosMessageTypes.Geometry;
+using RosMessageTypes.Std;
+
+public class RobotController : MonoBehaviour
+{
+    ROSConnection ros;
+    Rigidbody rb;
+    public float linearVelocity = 1.0f;
+    public float angularVelocity = 1.0f;
+
+    void Start()
+    {
+        ros = ROSConnection.GetOrCreateInstance();
+        rb = GetComponent<Rigidbody>();
+
+        // Subscribe to velocity commands
+        ros.Subscribe<TwistMsg>("cmd_vel", OnVelocityCommand);
+    }
+
+    void OnVelocityCommand(TwistMsg cmd)
+    {
+        // Apply linear velocity
+        Vector3 linear = new Vector3(
+            (float)cmd.linear.x,
+            (float)cmd.linear.y,
+            (float)cmd.linear.z
+        );
+
+        // Apply angular velocity
+        Vector3 angular = new Vector3(
+            (float)cmd.angular.x,
+            (float)cmd.angular.y,
+            (float)cmd.angular.z
+        );
+
+        rb.velocity = linear * linearVelocity;
+        rb.angularVelocity = angular * angularVelocity;
+    }
+
+    void Update()
+    {
+        // Additional robot logic here
+    }
+}
+```
+
+## Creating Custom Messages
+
+You can create custom ROS messages for Unity integration:
+
+```csharp title="CustomRobotStatus.cs"
+using Unity.Robotics.ROSTCPConnector.MessageGeneration;
+
+public class CustomRobotStatus : Message
+{
+    public const string k_RosMessageName = "my_robot_msgs/RobotStatus";
+    public override string RosMessageName => k_RosMessageName;
+
+    public string robot_name;
+    public double[] joint_positions;
+    public double[] joint_velocities;
+    public bool is_moving;
+    public float battery_level;
+
+    public CustomRobotStatus()
+    {
+        this.robot_name = "";
+        this.joint_positions = new double[0];
+        this.joint_velocities = new double[0];
+        this.is_moving = false;
+        this.battery_level = 0.0f;
+    }
+
+    public CustomRobotStatus(string robot_name, double[] joint_positions,
+                            double[] joint_velocities, bool is_moving, float battery_level)
+    {
+        this.robot_name = robot_name;
+        this.joint_positions = joint_positions;
+        this.joint_velocities = joint_velocities;
+        this.is_moving = is_moving;
+        this.battery_level = battery_level;
+    }
+}
+```
+
+## Perception Package Integration
+
+Unity Perception can generate synthetic data for training AI models:
+
+```csharp title="SensorDataCollector.cs"
+using UnityEngine;
+using Unity.Perception.GroundTruth;
+using Unity.Perception.GroundTruth.DataModel;
+
+public class SensorDataCollector : MonoBehaviour
+{
+    [SerializeField] private GameObject sensorObject;
+    private SemanticSegmentationLabeler labeler;
+
+    void Start()
+    {
+        // Initialize semantic segmentation
+        labeler = sensorObject.GetComponent<SemanticSegmentationLabeler>();
+    }
+
+    void Update()
+    {
+        // Collect sensor data periodically
+        if (Time.frameCount % 30 == 0) // Every 30 frames
+        {
+            // Capture sensor data
+            CaptureSensorData();
+        }
+    }
+
+    void CaptureSensorData()
+    {
+        // Collect RGB, depth, and semantic segmentation data
+        // This data can be used for training computer vision models
+    }
+}
+```
+
+## Best Practices for Unity-ROS Integration
+
+- **Performance**: Optimize Unity scenes for real-time performance when running with ROS communication
+- **Synchronization**: Ensure proper synchronization between Unity's update loop and ROS message handling
+- **Error handling**: Implement robust error handling for network communication failures
+- **Scene management**: Organize Unity scenes to match the ROS package structure
+- **Testing**: Use Unity's testing framework alongside ROS testing tools
+
+## Summary
+
+Unity provides powerful capabilities for robotics simulation and visualization when integrated with ROS 2. The combination of Unity's rendering capabilities and ROS 2's robotics framework enables sophisticated digital twin applications for robotic systems.
+
+<DiagramPlaceholder
+  title="Unity-ROS Integration"
+  description="Shows the communication flow between Unity and ROS 2 systems"
+/>
