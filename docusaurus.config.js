@@ -13,7 +13,8 @@ const config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://waqar-computer.github.io',
+  url: 'https://nehaltariq357.github.io',
+  // url: 'https://waqar-computer.github.io',
   // Set the /<base>/ pathname under which your site is served
   // For GitHub Pages, this is usually '/<project-name>/'
   baseUrl: '/hackthon/',
