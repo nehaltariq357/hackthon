@@ -54,14 +54,7 @@ const config = {
   ],
 
   plugins: [
-    // Add Tailwind CSS plugin
-    [
-      'docusaurus-plugin-tailwindcss',
-      {
-        // Specify the path to your tailwind config file
-        tailwindConfig: './tailwind.config.js',
-      },
-    ],
+    // Tailwind CSS is integrated via postcss
   ],
 
   themeConfig:
