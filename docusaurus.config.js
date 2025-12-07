@@ -20,7 +20,7 @@ const config = {
   baseUrl: '/hackthon/',
 
   // GitHub pages deployment config.
-  organizationName: 'Waqar computer', // Usually your GitHub org/user name.
+  organizationName: 'nehaltariq357', // Usually your GitHub org/user name.
   projectName: 'hackthon', // Usually your repo name.
 
   onBrokenLinks: 'throw',
@@ -43,8 +43,9 @@ const config = {
           sidebarPath: './sidebars.js',
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/waqar-computer/hackthon/tree/master/',
+          // editUrl:
+          //   'https://github.com/waqar-computer/hackthon/tree/master/',
+          editUrl: 'https://github.com/nehaltariq357/hackthon/tree/master/',
         },
         blog: false, // Disable blog for textbook
         theme: {
