@@ -18,7 +18,7 @@ const config = {
   // Set the /<base>/ pathname under which your site is served
   // For GitHub Pages, this is usually '/<project-name>/'
   // baseUrl: '/hackthon/',
-  baseUrl: '/',
+  baseUrl:'/',
 
   // GitHub pages deployment config.
   organizationName: 'nehaltariq357', // Usually your GitHub org/user name.
