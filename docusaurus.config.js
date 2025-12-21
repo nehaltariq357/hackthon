@@ -34,6 +34,8 @@ const config = {
     locales: ['en'],
   },
 
+  trailingSlash: false,
+
   presets: [
     [
       'classic',
@@ -68,7 +70,7 @@ const config = {
         title: 'AI Robotics Textbook',
         logo: {
           alt: 'AI Robotics Textbook Logo',
-          src: 'img/logo.svg',
+          src: '/img/logo.png',
         },
         items: [
           {

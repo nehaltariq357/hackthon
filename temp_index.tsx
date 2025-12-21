@@ -1,6 +1,8 @@
 import React, { JSX } from 'react';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
+import Logo from '@site/src/components/Logo';
+
 /* =========================
    HERO SECTION
 ========================= */
@@ -8,6 +10,7 @@ function HomepageHeader() {
   return (
     <header className="hero hero--primary">
       <div className="container text--center">
+        <Logo width={64} height={64} className="margin-bottom--md" />
         <h1 className="hero__title">AI Robotics Textbook</h1>
         <p className="hero__subtitle">
           Physical AI & Humanoid Robotics Course
