@@ -13,8 +13,8 @@ In this capstone project, you'll design and implement an autonomous humanoid rob
 
 ## Topics in this Module
 
-- [Humanoid Robot Integration](./topic-1)
-- [Autonomous Behavior Implementation](./topic-2)
+- [Humanoid Robot Integration](/docs/capstone-project/topic-1)
+- [Autonomous Behavior Implementation](/docs/capstone-project/topic-2)
 
 ## Learning Objectives
 

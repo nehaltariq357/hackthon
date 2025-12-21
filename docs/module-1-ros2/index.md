@@ -13,9 +13,9 @@ ROS 2 is a flexible framework for writing robot software. It's a collection of t
 
 ## Topics in this Module
 
-- [Introduction to ROS 2 Architecture](./topic-1)
-- [ROS 2 Nodes and Topics](./topic-2)
-- [ROS 2 Services and Actions](./topic-3)
+- [Introduction to ROS 2 Architecture](/docs/module-1-ros2/topic-1)
+- [ROS 2 Nodes and Topics](/docs/module-1-ros2/topic-2)
+- [ROS 2 Services and Actions](/docs/module-1-ros2/topic-3)
 
 ## Learning Objectives
 

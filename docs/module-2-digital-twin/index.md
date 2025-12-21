@@ -13,9 +13,9 @@ Digital twin technology allows roboticists to create virtual replicas of physica
 
 ## Topics in this Module
 
-- [Gazebo Simulation Environment](./topic-1)
-- [Unity Integration for Robotics](./topic-2)
-- [Digital Twin Concepts and Applications](./topic-3)
+- [Gazebo Simulation Environment](/docs/module-2-digital-twin/topic-1)
+- [Unity Integration for Robotics](/docs/module-2-digital-twin/topic-2)
+- [Digital Twin Concepts and Applications](/docs/module-2-digital-twin/topic-3)
 
 ## Learning Objectives
 

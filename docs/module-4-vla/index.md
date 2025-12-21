@@ -13,9 +13,9 @@ Vision-Language-Action (VLA) models represent a paradigm shift in robotics, wher
 
 ## Topics in this Module
 
-- [Vision Systems for Robotics](./topic-1)
-- [Language Models for Robot Control](./topic-2)
-- [Action Planning and Execution](./topic-3)
+- [Vision Systems for Robotics](/docs/module-4-vla/topic-1)
+- [Language Models for Robot Control](/docs/module-4-vla/topic-2)
+- [Action Planning and Execution](/docs/module-4-vla/topic-3)
 
 ## Learning Objectives
 

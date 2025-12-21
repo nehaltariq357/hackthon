@@ -13,9 +13,9 @@ NVIDIA Isaac is a robotics platform that includes the Isaac ROS software framewo
 
 ## Topics in this Module
 
-- [Isaac ROS Framework](./topic-1)
-- [AI Tools and Acceleration](./topic-2)
-- [Simulation and Deployment](./topic-3)
+- [Isaac ROS Framework](/docs/module-3-nvidia-isaac/topic-1)
+- [AI Tools and Acceleration](/docs/module-3-nvidia-isaac/topic-2)
+- [Simulation and Deployment](/docs/module-3-nvidia-isaac/topic-3)
 
 ## Learning Objectives
 
