@@ -70,7 +70,7 @@ const config = {
       navbar: {
         title: 'AI Robotics Textbook',
         logo: {
-          alt: 'AI Robotics Textbook Logo',
+          alt: '',
           src: '/img/logo.png',
         },
         items: [
