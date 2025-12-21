@@ -2,6 +2,8 @@
 
 Physical AI & Humanoid Robotics Course textbook built with Docusaurus.
 
+Last deployment fix: December 21, 2025
+
 ## Features
 
 - 5 comprehensive modules covering ROS 2, Digital Twins, NVIDIA Isaac, Vision-Language-Action, and a Capstone Project
